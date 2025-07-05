@@ -1,20 +1,24 @@
-// === Dépendances ===
+// === Dépendances globales ===
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const cron = require('node-cron');
-const OpenAI = require('openai');
-require('dotenv').config();
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
+const OpenAI = require('openai');
 const { Buffer } = require('buffer');
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+const FormData = require('form-data');
+const { google } = require('googleapis');
+const { jsonrepair } = require('jsonrepair');
+require('dotenv').config();
 
 // === Vérification ENV au boot ===
 const envVars = [
   'MONGODB_URI', 'OPENAI_API_KEY',
   'PE_CLIENT_ID', 'PE_CLIENT_SECRET',
-  'ADZUNA_APP_ID', 'ADZUNA_APP_KEY'
+  'ADZUNA_APP_ID', 'ADZUNA_APP_KEY',
+  'OCRSPACE_APIKEY', 'GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET', 'GMAIL_REDIRECT_URI'
 ];
 envVars.forEach(v => {
   if (!process.env[v]) throw new Error(`❌ Variable d'environnement manquante : ${v}`);
@@ -28,14 +32,14 @@ app.use(express.urlencoded({ extended: true }));
 const upload = multer({ storage: multer.memoryStorage() });
 
 // ==== MongoDB Connection ====
-mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true })
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch(err => {
     console.error('❌ MongoDB connection error:', err);
     process.exit(1);
   });
 
-// ==== Offre Model ====
+// ==== Modèles ====
 const OffreSchema = new mongoose.Schema({
   title: String,
   company: String,
@@ -46,8 +50,26 @@ const OffreSchema = new mongoose.Schema({
 });
 const OffreModel = mongoose.model('Offre', OffreSchema);
 
+const AdminDocSchema = new mongoose.Schema({
+  name: String,
+  userId: String,
+  type: String,
+  uri: String,
+  textContent: String,
+  extractedData: mongoose.Schema.Types.Mixed,
+  dateUpload: Date,
+});
+const AdminDocModel = mongoose.model('AdminDoc', AdminDocSchema);
+
 // ==== OpenAI Config ====
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// ==== GMAIL OAuth2 ====
+const oAuth2Client = new google.auth.OAuth2(
+  process.env.GMAIL_CLIENT_ID,
+  process.env.GMAIL_CLIENT_SECRET,
+  process.env.GMAIL_REDIRECT_URI
+);
 
 // ==== Pôle Emploi Auth ====
 async function getPoleEmploiToken() {
@@ -107,12 +129,37 @@ async function searchJobsPoleEmploi(token, motCle, lieu, range = 20) {
   }));
 }
 
+// ==== OCR extraction via OCR.Space ====
+async function extractTextWithOCR(buffer) {
+  const apiKey = process.env.OCRSPACE_APIKEY;
+  const formData = new FormData();
+  formData.append('file', buffer, { filename: 'cv.pdf', contentType: 'application/pdf' });
+  formData.append('language', 'fre');
+  formData.append('isOverlayRequired', 'false');
+  const resp = await fetch('https://api.ocr.space/parse/image', {
+    method: 'POST',
+    headers: {
+      ...formData.getHeaders(),
+      apikey: apiKey
+    },
+    body: formData
+  });
+  const data = await resp.json();
+  if (
+    data &&
+    data.ParsedResults &&
+    data.ParsedResults[0] &&
+    data.ParsedResults[0].ParsedText
+  ) {
+    return data.ParsedResults[0].ParsedText;
+  }
+  throw new Error('OCR extraction failed');
+}
+
 // ==== Healthcheck ====
 app.get('/api/health', async (req, res) => {
   try {
-    // Test Mongo
     const mongoOk = !!(await mongoose.connection.db.admin().ping());
-    // Test OpenAI
     let aiOk = false;
     try {
       await openai.chat.completions.create({
@@ -122,13 +169,11 @@ app.get('/api/health', async (req, res) => {
       });
       aiOk = true;
     } catch {}
-    // Test PE
     let peOk = false;
     try {
       await getPoleEmploiToken();
       peOk = true;
     } catch {}
-    // Test Adzuna
     let adzunaOk = false;
     try {
       await searchJobsAdzuna('developpeur', 'Paris');
@@ -149,197 +194,413 @@ app.get('/api/health', async (req, res) => {
 // ==== Root route ====
 app.get('/', (req, res) => res.send('✅ API CAP OK'));
 
-// ==== Smart jobs (CV intelligent ou import) ====
-app.post('/api/smart-jobs', upload.single('cvFile'), async (req, res) => {
+// ==== GMAIL OAuth2 ROUTES ====
+app.get('/api/gmail/auth-url', (req, res) => {
+  const authUrl = oAuth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.modify',
+      'https://www.googleapis.com/auth/gmail.labels'
+    ],
+    prompt: 'consent'
+  });
+  res.json({ url: authUrl });
+});
+
+app.get('/api/gmail/callback', async (req, res) => {
+  const { code } = req.query;
+  if (!code) return res.status(400).send('Code manquant');
   try {
-    // 1. Payload (JSON ou form-data)
-    let body;
-    if (req.is('application/json')) {
-      body = req.body;
-    } else if (req.is('multipart/form-data')) {
-      body = Object.fromEntries(
-        Object.entries(req.body).map(([k, v]) => {
-          try { return [k, JSON.parse(v)]; } catch { return [k, v]; }
-        })
-      );
-    } else {
-      body = req.body || {};
-    }
+    const { tokens } = await oAuth2Client.getToken(code);
+    res.json({ tokens });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-    // 2. Parse PDF
-    let pdfText = '';
-    if (req.file) {
-      const parsed = await pdfParse(req.file.buffer);
-      pdfText = parsed.text;
-      console.log('PDF extrait:', pdfText.slice(0, 300) + (pdfText.length > 300 ? '...' : ''));
-    }
+app.post('/api/mails/extract', async (req, res) => {
+  const { access_token } = req.body;
+  if (!access_token) return res.status(400).json({ error: 'access_token manquant' });
+  try {
+    oAuth2Client.setCredentials({ access_token });
+    const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
+    const resp = await gmail.users.messages.list({
+      userId: 'me',
+      q: 'has:attachment filename:pdf newer_than:30d',
+      maxResults: 10
+    });
 
-    // 3. Champs reçus
-    const {
-      nom, prenom, adresse, mail, tel, poste,
-      experiences = [],
-      competences = [],
-      savoirEtre = [],
-      savoirFaire = [],
-      elargir = false,
-      ville
-    } = body;
-
-    console.log('Payload reçu:', { nom, prenom, adresse, mail, tel, poste, experiences, competences, savoirEtre, savoirFaire, elargir, ville });
-
-    // 4. Extraction IA si PDF fourni
-    let extracted = { competences, experiences, ville: ville || adresse };
-    if (pdfText) {
-      const promptExtract = `
-Lis ce texte brut d’un CV :
----
-${pdfText}
----
-Réponds UNIQUEMENT par un JSON valide (aucun mot hors du JSON !) :
-{
-  "competences": [...],
-  "experiences": [{ "debut":"", "fin":"", "poste":"", "entreprise":"" }, …],
-  "ville": ""
-}`;
-      const respExtract = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: promptExtract }],
-        temperature: 0.0,
-        max_tokens: 300
-      });
-      try {
-        const txt = respExtract.choices[0].message.content.trim();
-        const start = txt.indexOf('{');
-        const end = txt.lastIndexOf('}');
-        if (start !== -1 && end !== -1) {
-          extracted = JSON.parse(txt.slice(start, end + 1));
-        } else {
-          extracted = JSON.parse(txt);
+    const docs = [];
+    if (resp.data.messages && resp.data.messages.length) {
+      for (const msg of resp.data.messages) {
+        const msgData = await gmail.users.messages.get({ userId: 'me', id: msg.id });
+        const parts = msgData.data.payload.parts || [];
+        const attachments = parts.filter(
+          p => p.filename && p.body && p.body.attachmentId
+        );
+        for (const att of attachments) {
+          docs.push({
+            name: att.filename,
+            mimeType: att.mimeType,
+            date: new Date(Number(msgData.data.internalDate)),
+            snippet: msgData.data.snippet,
+            id: att.body.attachmentId,
+            emailId: msg.id,
+          });
         }
-      } catch (e) {
-        console.error('Erreur parsing extraction IA:', e);
       }
     }
+    res.json({ documents: docs });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-    // 5. Mots-clés et ville
-    let motCle = poste || '';
-    if (elargir || !poste) {
-      motCle = [poste, ...(extracted.competences || []), ...savoirEtre, ...savoirFaire]
-        .filter(Boolean)
-        .join(' ');
-    }
-    const lieuRecherche = extracted.ville || ville || adresse || 'Paris';
+// ==== Démarches admin ROUTES ====
 
-    if (!motCle) {
-      return res.status(400).json({ error: "Pas de mots-clés envoyés" });
-    }
-    console.log('Recherche offres avec:', motCle, lieuRecherche);
-
-    // 6. Appels externes
-    let offresPE = [];
-    let offresAdz = [];
+// Upload d'un document administratif + extraction IA/OCR
+app.post('/api/docs', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Aucun fichier reçu' });
+    // OCR ou PDF extract
+    let textContent = '';
     try {
-      const tokenPE = await getPoleEmploiToken();
-      offresPE = await searchJobsPoleEmploi(tokenPE, motCle, lieuRecherche);
-    } catch (err) {
-      console.error('Erreur Pôle Emploi:', err);
-    }
-    try {
-      offresAdz = await searchJobsAdzuna(motCle, lieuRecherche);
-    } catch (err) {
-      console.error('Erreur Adzuna:', err);
-    }
-    const allOffres = [...offresPE, ...offresAdz];
-    console.log('Offres trouvées:', allOffres.length);
-
-    if (!allOffres.length) {
-      return res.json({ offresBrutes: [], smartOffers: [] });
-    }
-
-    // 7. Tri IA (ou bypass pour debug)
-    /*
-    // DEBUG ONLY: bypass IA pour voir si tout remonte
-    // return res.json({ offresBrutes: allOffres, smartOffers: allOffres.slice(0, 5) });
-    */
-
-    // Prompt IA précis
-    const promptTri = `
-Tu es un recruteur. Voici le CV JSON :
-${JSON.stringify({ nom, prenom, ...extracted }, null, 2)}
-
-Voici les offres (JSON) :
-${JSON.stringify(allOffres, null, 2)}
-
-Retourne UNIQUEMENT un tableau JSON des 5 offres les plus pertinentes (PAS UN MOT DE PLUS), format :
-[{"title":"","company":"","url":"","score":0.87},…]`;
-    let smartOffers = [];
-    try {
-      const respTri = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: promptTri }],
-        temperature: 0.0
-      });
-      const txt = respTri.choices[0].message.content.trim();
-      const start = txt.indexOf('[');
-      const end = txt.lastIndexOf(']');
-      if (start !== -1 && end !== -1) {
-        smartOffers = JSON.parse(txt.slice(start, end + 1));
-      } else {
-        smartOffers = JSON.parse(txt);
+      const parsed = await pdfParse(req.file.buffer);
+      textContent = parsed.text;
+      if (textContent.replace(/\s/g, '').length < 50) {
+        textContent = await extractTextWithOCR(req.file.buffer);
       }
     } catch (e) {
-      console.error('Erreur parsing tri IA:', e);
-      smartOffers = [];
+      textContent = await extractTextWithOCR(req.file.buffer);
     }
-
-    res.json({ extractedCV: extracted, offresBrutes: allOffres, smartOffers });
+    // OpenAI pour catégorisation + extraction infos
+    const prompt = `
+Lis ce document administratif et :
+- Dis s'il s'agit d'une facture, d'un avis d'imposition, d'une attestation CAF, etc.
+- Si facture : extrais le montant, la date, le fournisseur, le numéro de contrat.
+- Si impôt : extrais l’année, le montant, le type de document.
+- Si CAF : type d’aide, date, numéro allocataire.
+Réponds STRICTEMENT au format JSON :
+{
+  "type": "",
+  "infos": { ... }
+}
+Voici le texte :
+---
+${textContent}
+---
+    `;
+    let extractedData = {};
+    try {
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0,
+        max_tokens: 400
+      });
+      const txt = resp.choices[0].message.content.trim();
+      extractedData = JSON.parse(txt.substring(txt.indexOf('{'), txt.lastIndexOf('}') + 1));
+    } catch (e) {
+      extractedData = { type: 'Autre', infos: {} };
+    }
+    // Sauvegarde en base
+    const doc = new AdminDocModel({
+      name: req.file.originalname,
+      userId: req.body.userId || 'demo',
+      type: extractedData.type,
+      uri: '',
+      textContent,
+      extractedData,
+      dateUpload: new Date(),
+    });
+    await doc.save();
+    res.json({ success: true, doc });
   } catch (err) {
-    console.error('❌ /api/smart-jobs error', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ==== CV Upload & Extraction (séparé, optionnel) ====
-app.post('/api/cv-upload', upload.single('cvFile'), async (req, res) => {
+// Analyse de tous les docs d'un user
+app.post('/api/docs/analyse', async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "Aucun fichier reçu" });
-    const parsed = await pdfParse(req.file.buffer);
-    const pdfText = parsed.text;
-    // Prompt IA extraction
+    const userId = req.body.userId || 'demo';
+    const docs = await AdminDocModel.find({ userId }).lean();
+    const names = docs.map(d => d.name).join(', ');
+    const prompt = `
+Voici une liste de documents administratifs : ${names}.
+- Classe chaque document : Impôts, CAF, Factures, Téléphonie, Santé, Autres.
+- Indique les documents manquants.
+- Repère les doublons ou incohérences.
+- Pour chaque secteur, dis ce qu’il faudrait anticiper ou relancer.
+Réponses synthétiques, en français.
+    `;
+    const analyse = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.4,
+      max_tokens: 400
+    });
+    res.json({ analyse: analyse.choices[0].message.content.trim() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Génération action (lettre) sur un doc admin
+app.post('/api/docs/:id/gen-action', async (req, res) => {
+  try {
+    const doc = await AdminDocModel.findById(req.params.id).lean();
+    if (!doc) return res.status(404).json({ error: 'Document non trouvé' });
+    const prompt = `
+Génère une lettre type de ${req.body.type || 'résiliation'} pour ce document :
+${JSON.stringify(doc.extractedData)}
+Adresse, infos : ${req.body.adresse || 'non précisé'}
+Lettre claire, professionnelle, sans intro ni markdown.
+    `;
+    const lettre = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.4,
+      max_tokens: 400
+    });
+    res.json({ lettre: lettre.choices[0].message.content.trim() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==== Smart jobs (CV intelligent ou import) ====
+app.post('/api/smart-jobs', upload.single('cvFile'), async (req, res) => {
+  // ===== DEBUG LOGS ESSENTIELS =====
+  console.log('\n======== REQUETE /api/smart-jobs ========');
+  console.log('Date:', new Date().toISOString());
+  console.log('Headers:', req.headers);
+  if (req.file) {
+    console.log('>> Fichier reçu: OUI');
+    console.log('   - nom:', req.file.originalname || req.file.filename || '(inconnu)');
+    console.log('   - mimetype:', req.file.mimetype);
+    console.log('   - taille:', req.file.size);
+    console.log('   - Buffer type:', typeof req.file.buffer, 'Length:', req.file.buffer?.length);
+    console.log('   - First bytes:', req.file.buffer?.slice(0, 16));
+  } else {
+    console.log('>> Fichier reçu: NON');
+  }
+  console.log('Body complet:', req.body);
+  console.log('=========================================\n');
+
+  // 1. Payload (JSON ou form-data)
+  let body;
+  if (req.is('application/json')) {
+    body = req.body;
+  } else if (req.is('multipart/form-data')) {
+    body = Object.fromEntries(
+      Object.entries(req.body).map(([k, v]) => {
+        try { return [k, JSON.parse(v)]; } catch { return [k, v]; }
+      })
+    );
+  } else {
+    body = req.body || {};
+  }
+
+  // 2. Parse PDF si fichier envoyé (pdfParse, sinon OCR si pas de texte)
+  let pdfText = '';
+  if (req.file) {
+    try {
+      const parsed = await pdfParse(req.file.buffer);
+      pdfText = parsed.text;
+      console.log('==> Résultat pdfParse:', pdfText.slice(0, 300));
+      if (pdfText.replace(/\s/g, '').length < 50) {
+        // Probablement scan, tente OCR
+        pdfText = await extractTextWithOCR(req.file.buffer);
+        console.log('==> PDF (OCR) extrait:', pdfText.slice(0, 300));
+      } else {
+        console.log('==> PDF natif extrait (sans OCR):', pdfText.slice(0, 300));
+      }
+    } catch (err) {
+      console.warn('pdfParse erreur:', err.message);
+      // Si pdfParse foire, tente direct OCR
+      try {
+        pdfText = await extractTextWithOCR(req.file.buffer);
+        console.log('==> PDF (OCR) extrait après échec pdfParse:', pdfText.slice(0, 300));
+      } catch (ocrErr) {
+        console.error('Erreur OCR:', ocrErr.message);
+        return res.status(200).json({ error: "Impossible de lire ce CV (ni texte, ni OCR)", details: ocrErr.toString() });
+      }
+    }
+  } else {
+    // Aucun fichier reçu
+    return res.status(200).json({ error: "Aucun fichier reçu (cvFile) ou upload incomplet." });
+  }
+
+  // 3. Extraction IA blindée (poste, competences, ville, experience, savoir-être)
+  let extracted = { 
+    poste_cible: body.poste || "", 
+    competences: body.competences || [], 
+    ville: body.ville || "", 
+    experiences: body.experiences || [],
+    savoir_etre: body.savoirEtre || []
+  };
+  if (pdfText) {
     const promptExtract = `
-Lis ce texte brut d’un CV :
+Lis le CV ci-dessous (brut, pas de format). Ta mission :
+- Extrais de façon structurée :
+  - "poste_cible" : le métier recherché (ou le plus probable)
+  - "competences" : toutes les compétences techniques et transversales (liste)
+  - "ville" : la ville ou la zone géographique principale pour la recherche d’emploi
+  - "experiences" : liste d’objets { debut, fin, poste, entreprise }
+  - "savoir_etre" : soft skills, qualités (liste, si trouvées)
+- Si une info n’est pas évidente, infère-la ou laisse la valeur vide ("").
+
+Réponds **UNIQUEMENT** par ce JSON :
+{
+  "poste_cible": "",
+  "competences": [],
+  "ville": "",
+  "experiences": [{ "debut":"", "fin":"", "poste":"", "entreprise":"" }],
+  "savoir_etre": []
+}
+
+Attention : retourne un JSON STRICTEMENT valide, sans commentaire, sans texte autour, sans virgule de trop, sinon le résultat sera rejeté.
+
+Texte du CV :
 ---
 ${pdfText}
 ---
-Réponds UNIQUEMENT par un JSON valide (aucun mot hors du JSON !) :
-{
-  "competences": [...],
-  "experiences": [{ "debut":"", "fin":"", "poste":"", "entreprise":"" }, …],
-  "ville": ""
-}`;
+`;
     const respExtract = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [{ role: 'user', content: promptExtract }],
       temperature: 0.0,
-      max_tokens: 300
+      max_tokens: 400
     });
-    let extracted = {};
+    const txt = respExtract.choices[0].message.content.trim();
+    console.log('OpenAI Extraction brute :', txt);
+
     try {
-      const txt = respExtract.choices[0].message.content.trim();
       const start = txt.indexOf('{');
       const end = txt.lastIndexOf('}');
+      let jsonStr;
       if (start !== -1 && end !== -1) {
-        extracted = JSON.parse(txt.slice(start, end + 1));
+        jsonStr = txt.slice(start, end + 1);
       } else {
-        extracted = JSON.parse(txt);
+        jsonStr = txt;
       }
+      extracted = JSON.parse(jsonStr);
     } catch (e) {
-      return res.status(200).json({ error: "Erreur parsing IA", details: e.toString() });
+      try {
+        extracted = JSON.parse(jsonrepair(txt));
+        console.warn('⚠️ JSON IA réparé automatiquement.');
+      } catch (e2) {
+        console.error('Erreur parsing extraction IA (même après réparation):', e2, '\nTexte IA reçu :\n', txt);
+        return res.status(200).json({
+          error: "Erreur de parsing du JSON IA (même après tentative de réparation).",
+          details: e2.toString(),
+          rawIA: txt
+        });
+      }
     }
-    res.json({ extracted });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
   }
+
+  // Blocage si aucune donnée exploitable
+  if (
+    (!extracted.poste_cible || extracted.poste_cible.trim() === "") &&
+    (!extracted.competences || !extracted.competences.length)
+  ) {
+    return res.status(200).json({ 
+      error: "Impossible d'extraire des infos exploitables du CV. Merci d'envoyer un CV au format texte (pas un scan/image).",
+      extractedCV: extracted,
+      rawCV: pdfText
+    });
+  }
+
+  // 4. Critères principaux de recherche d’offres
+  let motCle = extracted.poste_cible || body.poste || '';
+  if (!motCle) {
+    motCle = [...(extracted.competences || []), ...(body.competences || [])].filter(Boolean).join(' ');
+  }
+  const lieuRecherche = extracted.ville || body.ville || body.adresse || 'Paris';
+
+  if (!motCle) {
+    return res.status(200).json({ 
+      error: "Aucun mot-clé n’a pu être extrait du CV, ou le format du CV est incompatible.", 
+      extractedCV: extracted,
+      rawCV: pdfText
+    });
+  }
+  console.log('Recherche offres avec:', motCle, lieuRecherche);
+
+  // 5. Appels aux APIs d’offres
+  let offresPE = [];
+  let offresAdz = [];
+  try {
+    const tokenPE = await getPoleEmploiToken();
+    offresPE = await searchJobsPoleEmploi(tokenPE, motCle, lieuRecherche);
+  } catch (err) {
+    console.error('Erreur Pôle Emploi:', err);
+  }
+  try {
+    offresAdz = await searchJobsAdzuna(motCle, lieuRecherche);
+  } catch (err) {
+    console.error('Erreur Adzuna:', err);
+  }
+  const allOffres = [...offresPE, ...offresAdz];
+  console.log('Offres trouvées:', allOffres.length);
+
+  if (!allOffres.length) {
+    return res.json({ offresBrutes: [], smartOffers: [] });
+  }
+
+  // 6. IA : tri pertinent et justification
+  const promptTri = `
+Tu es un expert RH. Voici un CV extrait, format JSON :
+${JSON.stringify(extracted, null, 2)}
+
+Voici des offres (format JSON) :
+${JSON.stringify(allOffres, null, 2)}
+
+Ta mission : sélectionne les 5 offres les plus pertinentes pour ce CV, en priorisant celles qui correspondent :
+- au "poste_cible"
+- aux "competences"
+- à la "ville"
+- et à l’expérience (niveau, secteur, etc).
+
+Pour chaque offre retenue, réponds STRICTEMENT dans ce format :
+[
+  {
+    "title": "",
+    "company": "",
+    "url": "",
+    "score": 0.99,
+    "motivation": "Correspond au poste visé, aux compétences [X, Y], et à la localisation recherchée"
+  },
+  ...
+]
+
+**AUCUN autre texte.** Retourne seulement ce tableau JSON.
+`;
+  let smartOffers = [];
+  try {
+    const respTri = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: promptTri }],
+      temperature: 0.0,
+      max_tokens: 800
+    });
+    const txt = respTri.choices[0].message.content.trim();
+    const start = txt.indexOf('[');
+    const end = txt.lastIndexOf(']');
+    if (start !== -1 && end !== -1) {
+      smartOffers = JSON.parse(txt.slice(start, end + 1));
+    } else {
+      smartOffers = JSON.parse(txt);
+    }
+  } catch (e) {
+    console.error('Erreur parsing tri IA:', e);
+    smartOffers = [];
+  }
+
+  res.json({ extractedCV: extracted, offresBrutes: allOffres, smartOffers });
 });
 
 // ==== Cached offers endpoint (simple, optionnel) ====
