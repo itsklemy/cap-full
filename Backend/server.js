@@ -286,10 +286,10 @@ app.post('/api/admin-mails/scan', async (req, res) => {
     if (!userId) return res.status(400).json({ error: 'userId (email Gmail) manquant' });
     const gmail = await getValidGmailClient(userId);
 
-    // *** NOUVEAU FILTRE : tout prendre sur 7 jours ***
+    // NOUVEAU FILTRE : tout prendre sur 7 jours pour debug
     const resp = await gmail.users.messages.list({
       userId: 'me',
-      q: 'newer_than:90d', // élargir au max pour tester
+      q: 'newer_than:7d', // élargir au max pour tester
       maxResults: 50
     });
 
@@ -306,6 +306,18 @@ app.post('/api/admin-mails/scan', async (req, res) => {
 
         const already = await AdminDocModel.findOne({ mailId: msg.id, userId });
         if (already) continue;
+
+        // --- Extraction body texte sans erreur ---
+        let body = '';
+        const parts = msgData.data.payload.parts;
+        if (parts && Array.isArray(parts)) {
+          const partPlain = parts.find(p => p.mimeType === 'text/plain');
+          if (partPlain && partPlain.body && partPlain.body.data) {
+            body = Buffer.from(partPlain.body.data, 'base64').toString('utf-8');
+          }
+        } else if (msgData.data.payload.body?.data) {
+          body = Buffer.from(msgData.data.payload.body.data, 'base64').toString('utf-8');
+        }
 
         // Analyse IA pour classer et extraire les infos utiles du mail
         let extracted = {
@@ -351,17 +363,15 @@ ${body}
         const doc = new AdminDocModel({
           name: subject || '(mail sans sujet)',
           userId,
-          type: extracted.type,
+          type: 'Inconnu', // à remplacer si tu ajoutes l'analyse IA
           uri: '',
           textContent: body,
-          extractedData: extracted,
+          extractedData: {},
           dateUpload: date ? new Date(date) : new Date(),
           source: 'mail',
           mailId: msg.id,
           from,
           subject,
-          deadline: extracted.deadline ? new Date(extracted.deadline) : null,
-          recommendations: extracted.recommendations || []
         });
         await doc.save();
         docsSaved++;
