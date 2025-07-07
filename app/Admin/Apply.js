@@ -14,10 +14,11 @@ import {
   TextInput,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import { useNavigation } from '@react-navigation/native';
 
 const BACKEND_URL = 'https://cap-backend-new.onrender.com';
 
-// Analyse intelligente
+// --- Analyse intelligente des documents ---
 function analyseDocumentType(name) {
   const lower = name.toLowerCase();
   if (lower.includes('paie')) return { type: 'Fiche de paie', cat: 'Salaire' };
@@ -32,7 +33,7 @@ function analyseDocumentType(name) {
   return { type: 'Autre', cat: 'Divers' };
 }
 
-// Chat IA flottant
+// --- Chat IA flottant ---
 function LibraryChatWidget({ visible, onClose, userId }) {
   const [messages, setMessages] = useState([
     { from: "CAP", text: "Bienvenue dans ta bibliothèque CAP. Pose-moi toutes tes questions ou demande un conseil sur tes documents !" }
@@ -105,8 +106,8 @@ function LibraryChatWidget({ visible, onClose, userId }) {
   );
 }
 
-// Bibliothèque Drive futuriste
-function FuturLibraryModal({ showLibrary, setShowLibrary, docs, notif, setShowChat, showChat, userId }) {
+// --- Bibliothèque intelligente style Drive ---
+function FuturLibraryModal({ showLibrary, setShowLibrary, docs, notif, setShowChat, showChat, userId, navigation }) {
   const byCat = {};
   docs.forEach(doc => {
     const cat = doc.cat || "Divers";
@@ -120,9 +121,12 @@ function FuturLibraryModal({ showLibrary, setShowLibrary, docs, notif, setShowCh
       <SafeAreaView style={{ flex: 1, backgroundColor: "#F6FCFB" }}>
         {/* HEADER */}
         <View style={styles.libraryHeader}>
-          <Text style={styles.libraryTitle}>Bibliothèque intelligente</Text>
           <TouchableOpacity onPress={() => setShowLibrary(false)}>
-            <Text style={styles.closeBtn}>Fermer</Text>
+            <Text style={styles.closeBtn}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.libraryTitle}>Bibliothèque intelligente</Text>
+          <TouchableOpacity onPress={() => navigation?.navigate('Board')}>
+            <Text style={styles.closeBtn}>Board</Text>
           </TouchableOpacity>
         </View>
         {/* ALERTES/RAPPELS */}
@@ -149,11 +153,9 @@ function FuturLibraryModal({ showLibrary, setShowLibrary, docs, notif, setShowCh
         <ScrollView contentContainerStyle={{ paddingBottom: 180 }}>
           {cats.map(cat => (
             <View key={cat} style={styles.folderBlock}>
-              {/* Bloc dossier spacieux */}
               <View style={styles.folderHeader}>
                 <Text style={styles.folderTitle}>{cat}</Text>
               </View>
-              {/* Documents */}
               <View style={styles.docsRow}>
                 {byCat[cat].map((d, i) => (
                   <View key={i} style={styles.driveCard}>
@@ -187,7 +189,10 @@ function FuturLibraryModal({ showLibrary, setShowLibrary, docs, notif, setShowCh
 }
 
 export default function Apply() {
-  const [email, setEmail] = useState('clmbch@gmail.com'); // Valeur par défaut ou vide
+  const navigation = useNavigation();
+
+  // Ajout du champ email (adresse Gmail)
+  const [email, setEmail] = useState('clmbch@gmail.com');
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
@@ -291,12 +296,22 @@ export default function Apply() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* --- NAVIGATION BAR --- */}
+      <View style={styles.navBar}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.navBtn}>←</Text>
+        </TouchableOpacity>
+        <Text style={styles.navTitle}>Démarches & Docs</Text>
+        <TouchableOpacity onPress={() => navigation.navigate('Board')}>
+          <Text style={styles.navBtn}>Board</Text>
+        </TouchableOpacity>
+      </View>
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         <Text style={styles.title}>CAP : ta bibliothèque administrative intelligente</Text>
         <Text style={styles.subtitle}>
           Tous tes documents rassemblés automatiquement, organisés et prêts à être analysés ou comparés.
         </Text>
-        {/* Saisie email */}
+        {/* ---- Saisie email ---- */}
         <View style={{ flexDirection: "row", alignItems: "center", marginLeft: 24, marginBottom: 8 }}>
           <TextInput
             style={{
@@ -338,15 +353,19 @@ export default function Apply() {
         setShowChat={setShowChat}
         showChat={showChat}
         userId={email}
+        navigation={navigation}
       />
     </SafeAreaView>
   );
 }
 
-// STYLES
+// ---- STYLES ----
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 0 },
-  title: { fontSize: 25, fontWeight: 'bold', color: '#1DFFC2', marginLeft: 24, marginTop: 32, marginBottom: 10 },
+  navBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10, paddingTop: 18, paddingBottom: 8, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
+  navBtn: { color: "#1DFFC2", fontWeight: 'bold', fontSize: 20, padding: 7 },
+  navTitle: { color: '#111', fontWeight: 'bold', fontSize: 19 },
+  title: { fontSize: 25, fontWeight: 'bold', color: '#1DFFC2', marginLeft: 24, marginTop: 24, marginBottom: 10 },
   subtitle: { fontSize: 16, color: '#343434', marginLeft: 24, marginBottom: 16, opacity: 0.8, fontWeight: '500' },
   libraryBtn: { marginTop: 8, marginLeft: 24, marginBottom: 10, alignSelf: 'flex-start' },
   libraryBtnText: { color: '#1DFFC2', fontWeight: '700', fontSize: 15 },
@@ -355,9 +374,9 @@ const styles = StyleSheet.create({
   bigBtnTitle: { color: '#1DFFC2', fontWeight: '700', fontSize: 16, marginBottom: 5 },
   bigBtnDesc: { color: '#222', fontSize: 14, opacity: 0.75 },
   // --- BIBLIOTHÈQUE STYLE DRIVE ---
-  libraryHeader: { flexDirection: "row", alignItems: "center", padding: 24, backgroundColor: "#E7FFF7", borderBottomColor: "#1DFFC2", borderBottomWidth: 1.5 },
-  libraryTitle: { fontSize: 28, color: "#1DFFC2", fontWeight: "bold", flex: 1, letterSpacing: 0.5 },
-  closeBtn: { fontWeight: "bold", color: "#1DFFC2", fontSize: 20 },
+  libraryHeader: { flexDirection: "row", alignItems: "center", padding: 24, backgroundColor: "#E7FFF7", borderBottomColor: "#1DFFC2", borderBottomWidth: 1.5, justifyContent: "space-between" },
+  libraryTitle: { fontSize: 22, color: "#1DFFC2", fontWeight: "bold", flex: 1, textAlign: "center", letterSpacing: 0.5 },
+  closeBtn: { fontWeight: "bold", color: "#1DFFC2", fontSize: 22, paddingHorizontal: 9 },
   alertBlock: { backgroundColor: "#E7FFF7", borderRadius: 13, marginHorizontal: 24, marginTop: 18, marginBottom: 6, padding: 14, borderLeftWidth: 4, borderLeftColor: "#1DFFC2" },
   alertText: { color: "#1DFFC2", fontWeight: "600", fontSize: 15, marginBottom: 3 },
   futurBar: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 18, marginVertical: 19, gap: 7 },
@@ -365,7 +384,7 @@ const styles = StyleSheet.create({
   actionBtnText: { color: "#1DFFC2", fontWeight: "bold", fontSize: 15 },
   folderBlock: { marginBottom: 35, marginTop: 10, paddingHorizontal: 0 },
   folderHeader: { backgroundColor: "#1DFFC2", paddingVertical: 18, paddingHorizontal: 24, borderRadius: 19, marginBottom: 12, marginTop: 3, alignSelf: "stretch" },
-  folderTitle: { fontWeight: "bold", color: "#fff", fontSize: 22, letterSpacing: 0.5, textTransform: "uppercase" },
+  folderTitle: { fontWeight: "bold", color: "#fff", fontSize: 20, letterSpacing: 0.5, textTransform: "uppercase" },
   docsRow: { flexDirection: "row", flexWrap: "wrap", gap: 16, paddingLeft: 12 },
   driveCard: { backgroundColor: "#fff", borderRadius: 19, padding: 15, marginBottom: 7, marginRight: 10, width: 260, minHeight: 95, justifyContent: "space-between", shadowColor: "#aaa", shadowOpacity: 0.07, shadowRadius: 7, elevation: 2 },
   docTitle: { color: "#111", fontWeight: "700", fontSize: 15, marginBottom: 4 },
