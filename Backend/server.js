@@ -233,8 +233,9 @@ app.get('/', (req, res) => res.send('✅ API CAP OK'));
 // ==== GMAIL OAUTH ====
 
 // 1. Demander l'URL d'auth Google pour connecter le compte
+// Génère l’URL d’auth pour connecter un compte Gmail précis
 app.get('/api/gmail/auth-url', (req, res) => {
-  const { userId } = req.query;
+  const { userId } = req.query; // ex : "clmbch@gmail.com"
   const authUrl = oAuth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: [
@@ -243,22 +244,23 @@ app.get('/api/gmail/auth-url', (req, res) => {
       'https://www.googleapis.com/auth/gmail.labels'
     ],
     prompt: 'select_account consent',
-    login_hint: userId,
+    login_hint: userId, // passe ici l'email utilisé
     redirect_uri: process.env.GMAIL_REDIRECT_URI?.trim()
   });
   res.json({ url: authUrl });
 });
 
+
 // 2. Callback pour sauver les tokens Google/Mail en base
 app.get('/api/gmail/callback', async (req, res) => {
-  const { code, userId } = req.query;
+  const { code } = req.query;
   if (!code) return res.status(400).send('Code manquant');
   try {
     const { tokens } = await oAuth2Client.getToken(code);
     oAuth2Client.setCredentials(tokens);
     const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
     const me = await gmail.users.getProfile({ userId: 'me' });
-    const googleEmail = me.data.emailAddress;
+    const googleEmail = me.data.emailAddress; // C’est ce mail qui sera la clé userId
 
     await GmailTokenModel.findOneAndUpdate(
       { userId: googleEmail },
@@ -275,6 +277,7 @@ app.get('/api/gmail/callback', async (req, res) => {
   }
 });
 
+
 // ==== Scan et extraction des mails administratifs ====
 // Chaque mail analysé par l’IA, transformé en doc "bibliothèque"
 app.post('/api/admin-mails/scan', async (req, res) => {
@@ -283,33 +286,28 @@ app.post('/api/admin-mails/scan', async (req, res) => {
     if (!userId) return res.status(400).json({ error: 'userId (email Gmail) manquant' });
     const gmail = await getValidGmailClient(userId);
 
+    // *** NOUVEAU FILTRE : tout prendre sur 7 jours ***
     const resp = await gmail.users.messages.list({
       userId: 'me',
-      q: 'newer_than:90d (facture OR quittance OR caf OR ameli OR impots OR edf OR assurance OR attestation OR relance OR logement OR déclaration OR paiement OR urssaf OR pôle emploi OR sécurité sociale OR EDF OR GDF OR SFR OR Free OR Orange OR DGFIP OR CPAM OR bail)',
+      q: 'newer_than:90d', // élargir au max pour tester
       maxResults: 50
     });
 
     let docsSaved = 0;
     if (resp.data.messages && resp.data.messages.length) {
       for (const msg of resp.data.messages) {
-        const already = await AdminDocModel.findOne({ mailId: msg.id, userId });
-        if (already) continue;
+        // Pour debug : affiche le sujet de chaque mail trouvé
         const msgData = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'full' });
         const headers = msgData.data.payload.headers || [];
         const subject = headers.find(h => h.name === 'Subject')?.value || '';
         const from = headers.find(h => h.name === 'From')?.value || '';
         const date = headers.find(h => h.name === 'Date')?.value || '';
-        let body = '';
-        if (msgData.data.payload.parts) {
-          const part = msgData.data.payload.parts.find(p => p.mimeType === 'text/plain');
-          if (part && part.body && part.body.data) {
-            body = Buffer.from(part.body.data, 'base64').toString('utf-8');
-          }
-        } else if (msgData.data.payload.body?.data) {
-          body = Buffer.from(msgData.data.payload.body.data, 'base64').toString('utf-8');
-        }
+        console.log('MAIL RÉCUPÉRÉ :', subject);
 
-        // Analyse IA (type, deadline, recommandations, résumé)
+        const already = await AdminDocModel.findOne({ mailId: msg.id, userId });
+        if (already) continue;
+
+        // Analyse IA pour classer et extraire les infos utiles du mail
         let extracted = {
           type: 'Inconnu',
           recommendations: [],
@@ -346,7 +344,9 @@ ${body}
           const txt = respAi.choices[0].message.content.trim();
           const jsonStr = txt.substring(txt.indexOf('{'), txt.lastIndexOf('}') + 1);
           extracted = JSON.parse(jsonStr);
-        } catch (e) {}
+        } catch (e) {
+          // En cas d'échec de l'IA, laisse les valeurs par défaut
+        }
 
         const doc = new AdminDocModel({
           name: subject || '(mail sans sujet)',
@@ -641,4 +641,3 @@ cron.schedule('15 */6 * * *', async () => {
 // ==== Start server ====
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`✅ CAP API running on http://localhost:${PORT}`));
-
