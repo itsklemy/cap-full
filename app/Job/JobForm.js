@@ -50,6 +50,64 @@ export default function JobForm() {
     })();
   }, []);
 
+  // ---- AJOUT/UPDATE Experience avec ID STABLE ----
+  function addExperience() {
+    setExperiences([...experiences, {
+      id: Date.now() + '-' + Math.floor(Math.random() * 1000),
+      poste: '',
+      entreprise: '',
+      debut: '',
+      fin: ''
+    }]);
+  }
+  function updateExp(idx, changes) {
+    setExperiences(exps => exps.map((exp, i) =>
+      i === idx ? { ...exp, ...changes } : exp
+    ));
+  }
+  function removeExp(idx) {
+    setExperiences(exps => exps.filter((_, i) => i !== idx));
+  }
+
+  // ==================== 0. ACCUEIL ====================
+  if (step === 0) return (
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.homeContainer}>
+        <Ionicons name="rocket-outline" size={40} color={ACCENT} style={{ alignSelf: 'center', marginBottom: 10, marginTop: 10 }} />
+        <Text style={styles.brandHome}>CV Intelligent</Text>
+        <Text style={styles.sloganHome}>
+          Un <Text style={{ color: ACCENT, fontWeight: 'bold' }}>CV parfait</Text> généré par l’IA.
+          <Text style={{ color: ACCENT }}> Obtiens des offres ciblées en 3 étapes.</Text>
+        </Text>
+        <View style={styles.stepsContainer}>
+          <View style={styles.stepDotActive}><Text style={styles.stepDotText}>1</Text></View>
+          <View style={styles.stepLine} />
+          <View style={styles.stepDot}><Text style={styles.stepDotText}>2</Text></View>
+          <View style={styles.stepLine} />
+          <View style={styles.stepDot}><Text style={styles.stepDotText}>3</Text></View>
+        </View>
+        <View style={styles.stepLabelsRow}>
+          <Text style={styles.stepLabel}>Infos</Text>
+          <Text style={styles.stepLabel}>Expériences</Text>
+          <Text style={styles.stepLabel}>Compétences</Text>
+        </View>
+        <Text style={styles.homeDesc}>
+          <Text style={{ fontWeight: '700' }}>Remplis les 3 étapes guidées</Text> pour créer un CV optimisé, personnalisé, prêt à être téléchargé. <Text style={{ color: ACCENT, fontWeight: '600' }}>Découvre en 1 clic toutes les offres qui te correspondent.</Text>
+        </Text>
+        <View style={{ marginTop: 34, width: '100%', alignItems: 'center' }}>
+          <TouchableOpacity style={styles.bigBtn} onPress={() => setStep(1)}>
+            <Ionicons name="bulb-outline" size={24} color="#111" style={{ marginRight: 8 }} />
+            <Text style={styles.bigBtnText}>Commencer</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.bigBtnSec} onPress={() => setStep(4)}>
+            <Ionicons name="cloud-upload-outline" size={24} color={ACCENT} style={{ marginRight: 8 }} />
+            <Text style={styles.bigBtnTextSec}>Importer un CV</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </SafeAreaView>
+  )
+
   // ==================== 1. INFOS PERSONNELLES ====================
   if (step === 1) return (
     <SafeAreaView style={styles.safe}>
@@ -58,7 +116,7 @@ export default function JobForm() {
           <Text style={styles.stepTitle}>
             <Ionicons name="person-outline" size={28} color={ACCENT} />  Informations personnelles
           </Text>
-          <UniformInput label="Prénom" value={prenom} onChange={setPrenom} placeholder="Clémence" icon="person-outline" autoFocus />
+          <UniformInput label="Prénom" value={prenom} onChange={setPrenom} placeholder="Clémence" icon="person-outline" />
           <UniformInput label="Nom" value={nom} onChange={setNom} placeholder="Bouchot" icon="person-outline" />
           <UniformInput label="Email" value={mail} onChange={setMail} placeholder="clemence@email.com" keyboardType="email-address" icon="mail-outline" />
           <UniformInput label="Téléphone" value={tel} onChange={setTel} placeholder="06..." keyboardType="phone-pad" icon="call-outline" />
@@ -85,53 +143,37 @@ export default function JobForm() {
             <Ionicons name="briefcase-outline" size={25} color={ACCENT} />  Expériences
           </Text>
           {experiences.map((exp, idx) => (
-            <View key={idx} style={styles.expCardModern}>
+            <View key={exp.id || idx} style={styles.expCardModern}>
               <UniformInput
                 label="Poste occupé"
                 value={exp.poste}
-                onChange={txt => {
-                  const arr = [...experiences];
-                  arr[idx].poste = txt;
-                  setExperiences(arr);
-                }}
+                onChange={txt => updateExp(idx, { poste: txt })}
                 icon="build-outline"
                 placeholder="Poste"
               />
               <UniformInput
                 label="Entreprise"
                 value={exp.entreprise}
-                onChange={txt => {
-                  const arr = [...experiences];
-                  arr[idx].entreprise = txt;
-                  setExperiences(arr);
-                }}
+                onChange={txt => updateExp(idx, { entreprise: txt })}
                 icon="business-outline"
                 placeholder="Entreprise"
               />
               <UniformInput
                 label="Début"
                 value={exp.debut}
-                onChange={txt => {
-                  const arr = [...experiences];
-                  arr[idx].debut = txt;
-                  setExperiences(arr);
-                }}
+                onChange={txt => updateExp(idx, { debut: txt })}
                 icon="calendar-outline"
                 placeholder="06/2023"
               />
               <UniformInput
                 label="Fin"
                 value={exp.fin}
-                onChange={txt => {
-                  const arr = [...experiences];
-                  arr[idx].fin = txt;
-                  setExperiences(arr);
-                }}
+                onChange={txt => updateExp(idx, { fin: txt })}
                 icon="calendar-outline"
                 placeholder='Fin (ou "actuel")'
               />
               <TouchableOpacity
-                onPress={() => setExperiences(experiences.filter((_, j) => j !== idx))}
+                onPress={() => removeExp(idx)}
                 style={styles.removeExpBtn}
               >
                 <Ionicons name="close-circle" size={22} color="#ff6464" />
@@ -139,7 +181,7 @@ export default function JobForm() {
             </View>
           ))}
           <TouchableOpacity
-            onPress={() => setExperiences([...experiences, { poste: '', entreprise: '', debut: '', fin: '' }])}
+            onPress={addExperience}
             style={styles.addExpBtn}
           >
             <Ionicons name="add-circle-outline" size={22} color={ACCENT} />
@@ -452,13 +494,7 @@ export default function JobForm() {
 
   // ============ COMPONENTS UNIFORMES ============
 
-  function UniformInput({ label, value, onChange, placeholder, keyboardType, icon, autoFocus }) {
-    const inputRef = useRef(null);
-    useEffect(() => {
-      if (autoFocus && inputRef.current) {
-        setTimeout(() => inputRef.current.focus(), 350);
-      }
-    }, [autoFocus]);
+  function UniformInput({ label, value, onChange, placeholder, keyboardType, icon }) {
     return (
       <View style={{ marginBottom: 12 }}>
         <Text style={{ color: '#287E6F', fontWeight: '600', marginBottom: 3 }}>{label}</Text>
@@ -468,15 +504,14 @@ export default function JobForm() {
         }}>
           {icon && <Ionicons name={icon} size={19} color="#A0EAD3" style={{ marginRight: 6 }} />}
           <TextInput
-            ref={inputRef}
             style={{ flex: 1, paddingVertical: 9, fontSize: 16, color: '#222' }}
             value={value}
             onChangeText={onChange}
             placeholder={placeholder}
             placeholderTextColor="#b0cfc6"
             keyboardType={keyboardType || 'default'}
-            autoFocus={autoFocus}
             returnKeyType="done"
+            blurOnSubmit={false}
           />
         </View>
       </View>
@@ -531,7 +566,6 @@ export default function JobForm() {
       </View>
     );
   }
-
 }
 
 // =================== STYLE ===================
@@ -601,5 +635,4 @@ const styles = StyleSheet.create({
   applyBtnText: { color: '#111', fontWeight: '700', fontSize: 16, marginLeft: 4 },
   compSwitchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 16, marginTop: 4 },
 });
-
 
