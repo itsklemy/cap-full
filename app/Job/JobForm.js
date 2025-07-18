@@ -458,6 +458,8 @@ export default function JobForm() {
   }
 }
 
+// ... tes styles inchangés ...
+
 const styles = StyleSheet.create({
   cvCard: {
     backgroundColor: '#fff', borderRadius: 20, padding: 22, width: SCREEN_WIDTH * 0.95,
