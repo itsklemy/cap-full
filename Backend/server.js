@@ -15,7 +15,7 @@ const path = require('path');
 const fs = require('fs');
 const puppeteer = require('puppeteer');
 const { getCvHtml_Template1 } = require('../app/templates/CvTemplatesHtml');
-app.use(express.static('public'));
+
 
 
 // === Vérification ENV au boot ===
@@ -36,6 +36,9 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 const upload = multer({ storage: multer.memoryStorage() });
+
+
+app.use(express.static('public'));
 
 // ==== MongoDB Connection ====
 mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true })
