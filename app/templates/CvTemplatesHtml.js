@@ -1,215 +1,130 @@
-// /app/templates/CvTemplatesHtml.js
+export function getCvHtml_Template1(data = {}, options = {}) {
+  // Déstructuration et fallback des données
+  const {
+    nom = "OLIVIA", prenom = "WILSON", poste = "GRAPHIC DESIGNER",
+    photoUrl = "", accroche = "", contact = {},
+    competences = [], savoirEtre = [], experiences = [], formations = [],
+    interets = [], langues = []
+  } = data;
 
-export function getCvHtml_CanvaPremium(cvData = {}) {
-    const {
-      prenom = '', nom = '', poste = '', accroche = '', photoUrl = '',
-      contact = {}, competences = [], savoirEtre = [], experiences = [],
-      formations = [], interets = [], langues = [], qualites = []
-    } = cvData;
-  
-    return `
-    <html>
-    <head>
-      <meta charset="UTF-8" />
-      <style>
-        body {
-          margin: 0;
-          padding: 0;
-          background: #e8fdf6;
-        }
-        .cv-container {
-          display: flex;
-          flex-direction: row;
-          max-width: 850px;
-          min-height: 1200px;
-          margin: 40px auto;
-          background: #fff;
-          border-radius: 32px;
-          box-shadow: 0 10px 48px #0001;
-          overflow: hidden;
-          font-family: 'Segoe UI', Arial, sans-serif;
-        }
-        .cv-sidebar {
-          background: linear-gradient(180deg, #1DFFC2 0%, #68efd7 100%);
-          width: 230px;
-          min-width: 200px;
-          color: #fff;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          padding: 36px 18px 36px 18px;
-          position: relative;
-        }
-        .cv-sidebar .avatar {
-          width: 110px; height: 110px;
-          border-radius: 50%;
-          background: #fff;
-          margin-bottom: 18px;
-          box-shadow: 0 4px 16px #0002;
-          display: flex;
-          align-items: center; justify-content: center;
-          font-size: 52px; color: #1DFFC2;
-          overflow: hidden;
-        }
-        .cv-sidebar .section {
-          margin-top: 18px;
-          margin-bottom: 12px;
-          width: 100%;
-        }
-        .cv-sidebar .section-title {
-          font-weight: 700;
-          font-size: 14px;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          border-bottom: 2px solid #fff8;
-          padding-bottom: 3px;
-          margin-bottom: 7px;
-          opacity: 0.85;
-        }
-        .cv-sidebar .section-content {
-          font-size: 13.2px;
-          margin-bottom: 8px;
-        }
-        .cv-sidebar .dot {
-          width: 11px; height: 11px; border-radius: 50%; background: #fff7; margin: 8px auto;
-        }
-        .cv-main {
-          flex: 1;
-          padding: 48px 52px 42px 36px;
-          position: relative;
-          background: #fff;
-          border-top-left-radius: 62px;
-        }
-        .cv-main .name {
-          font-size: 36px; font-weight: 900; color: #1DFFC2; letter-spacing: 1.5px;
-        }
-        .cv-main .role {
-          font-size: 22px; font-weight: 700; color: #19b999; margin-bottom: 6px;
-          letter-spacing: 0.5px;
-        }
-        .cv-main .catchline {
-          font-size: 16px; font-style: italic; color: #555; margin-bottom: 20px;
-          opacity: 0.85;
-        }
-        .cv-main .section-title {
-          color: #1DFFC2;
-          font-weight: 800;
-          font-size: 17px;
-          letter-spacing: 1.2px;
-          margin-top: 30px;
-          margin-bottom: 10px;
-          border-bottom: 2px solid #e7fff9;
-          padding-bottom: 4px;
-          text-transform: uppercase;
-        }
-        .cv-main .section-content {
-          font-size: 15px;
-          color: #222;
-          margin-bottom: 18px;
-          line-height: 1.7;
-        }
-        /* Responsive : impression/export */
-        @media print {
-          .cv-container { box-shadow: none; margin: 0; }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="cv-container">
-        <div class="cv-sidebar">
-          <!-- Avatar (photo) -->
-          <div class="avatar">
-            ${photoUrl ? `<img src="${photoUrl}" alt="Photo" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" />` : '<span>👤</span>'}
-          </div>
-          <!-- Coordonnées -->
-          <div class="section">
-            <div class="section-title">Coordonnées</div>
-            <div class="section-content">
-              ${contact.tel ? contact.tel + '<br>' : ''}
-              ${contact.email ? contact.email + '<br>' : ''}
-              ${contact.adresse ? contact.adresse : ''}
-            </div>
-          </div>
-          <div class="dot"></div>
-          <!-- Langues -->
-          ${langues?.length ? `
-            <div class="section">
-              <div class="section-title">Langues</div>
-              <div class="section-content">
-                ${langues.map(l => l).join('<br>')}
-              </div>
-            </div>
-            <div class="dot"></div>
-          ` : ''}
-          <!-- Qualités -->
-          ${qualites?.length ? `
-            <div class="section">
-              <div class="section-title">Qualités</div>
-              <div class="section-content">
-                ${qualites.map(q => q).join('<br>')}
-              </div>
-            </div>
-            <div class="dot"></div>
-          ` : ''}
-          <!-- Compétences -->
-          ${competences?.length ? `
-            <div class="section">
-              <div class="section-title">Compétences</div>
-              <div class="section-content">
-                ${competences.map(c => c).join('<br>')}
-              </div>
-            </div>
-            <div class="dot"></div>
-          ` : ''}
-          <!-- Centres d’intérêt -->
-          ${interets?.length ? `
-            <div class="section">
-              <div class="section-title">Centres d’intérêt</div>
-              <div class="section-content">
-                ${interets.map(c => c).join(', ')}
-              </div>
-            </div>
-          ` : ''}
+  // Couleurs
+  const mainColor = options.mainColor || "#1DFFC2";
+  const accentColor = options.accentColor || "#297F6D";
+  const bgColor = options.bgColor || "#e8fdf6";
+
+  return `
+  <html>
+  <head>
+    <meta charset="UTF-8" />
+    <link href="https://fonts.googleapis.com/css?family=Montserrat:700,900|Montserrat:400,700&display=swap" rel="stylesheet">
+    <style>
+      body {
+        background: ${bgColor}; margin: 0; padding: 0;
+        font-family: 'Montserrat', Arial, sans-serif;
+      }
+      .cv-wrapper {
+        max-width: 850px; min-height: 1200px;
+        margin: 40px auto; background: #fff;
+        border-radius: 32px; box-shadow: 0 10px 48px #0001;
+        display: flex; flex-direction: row; overflow: hidden;
+      }
+      .sidebar {
+        width: 240px; background: linear-gradient(180deg, ${mainColor} 0%, #68efd7 100%);
+        color: #fff; padding: 40px 22px; display: flex; flex-direction: column; align-items: center;
+      }
+      .avatar {
+        width: 110px; height: 110px; border-radius: 50%; background: #fff; margin-bottom: 18px;
+        box-shadow: 0 4px 16px #0002; overflow: hidden; display: flex; align-items: center; justify-content: center;
+      }
+      .avatar img { width: 100%; height: 100%; object-fit: cover; }
+      .profile-name { font-size: 36px; font-weight: 900; letter-spacing: 2px; color: #fff; text-align: center; margin-bottom: 6px; }
+      .profile-role { font-size: 17px; font-weight: 700; text-transform: uppercase; opacity: 0.95; color: #fff; margin-bottom: 14px; letter-spacing: 2px; }
+      .sidebar-section { margin-bottom: 22px; width: 100%; }
+      .sidebar-title { font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-bottom: 7px; text-transform: uppercase; border-bottom: 2px solid #fff7; padding-bottom: 3px; opacity: 0.85; }
+      .sidebar-content { font-size: 13.4px; line-height: 1.6; }
+      .main { flex: 1; padding: 54px 48px 42px 40px; }
+      .main-section { margin-bottom: 36px; }
+      .main-title { font-size: 17px; font-weight: 800; color: ${mainColor}; text-transform: uppercase; letter-spacing: 1.2px; border-bottom: 2px solid #e7fff9; margin-bottom: 12px; padding-bottom: 4px; }
+      .exp-bloc { margin-bottom: 16px; }
+      .exp-title { font-weight: 700; font-size: 15.5px; color: ${accentColor}; margin-bottom: 3px; }
+      .exp-date { color: #888; font-size: 13.4px; margin-left: 7px; }
+      .exp-desc { color: #232323; font-size: 14px; }
+      .skills-badge { display: inline-block; background: #fff2; border-radius: 14px; padding: 6px 12px; font-weight: 600; font-size: 13px; margin: 3px 2px 2px 0; }
+    </style>
+  </head>
+  <body>
+    <div class="cv-wrapper">
+      <div class="sidebar">
+        <div class="avatar">
+          ${photoUrl ? `<img src="${photoUrl}" alt="Photo">` : '<span style="font-size:54px;">👤</span>'}
         </div>
-        <div class="cv-main">
-          <div class="name">${prenom} ${nom}</div>
-          <div class="role">${poste}</div>
-          <div class="catchline">${accroche}</div>
-          <div class="section-title">Expériences Professionnelles</div>
-          <div class="section-content">
-            ${
-              Array.isArray(experiences) && experiences.length ?
+        <div class="profile-name">${prenom} <br>${nom}</div>
+        <div class="profile-role">${poste}</div>
+        <div class="sidebar-section">
+          <div class="sidebar-title">Contact</div>
+          <div class="sidebar-content">
+            ${contact.tel ? `📞 ${contact.tel}<br>` : ''}
+            ${contact.email ? `✉️ ${contact.email}<br>` : ''}
+            ${contact.adresse ? `🏠 ${contact.adresse}<br>` : ''}
+          </div>
+        </div>
+        ${langues.length ? `
+        <div class="sidebar-section">
+          <div class="sidebar-title">Langues</div>
+          <div class="sidebar-content">${langues.map(l => `<span class="skills-badge">${l}</span>`).join(' ')}</div>
+        </div>
+        ` : ''}
+        ${competences.length ? `
+        <div class="sidebar-section">
+          <div class="sidebar-title">Compétences</div>
+          <div class="sidebar-content">${competences.map(c => `<span class="skills-badge">${c}</span>`).join(' ')}</div>
+        </div>
+        ` : ''}
+        ${interets.length ? `
+        <div class="sidebar-section">
+          <div class="sidebar-title">Centres d’intérêt</div>
+          <div class="sidebar-content">${interets.map(i => `<span class="skills-badge">${i}</span>`).join(' ')}</div>
+        </div>
+        ` : ''}
+      </div>
+      <div class="main">
+        ${accroche ? `<div style="font-style:italic; color:#888; margin-bottom:30px;">${accroche}</div>` : ''}
+        <div class="main-section">
+          <div class="main-title">Expérience</div>
+          ${
+            Array.isArray(experiences) && experiences.length ?
               experiences.map(exp => `
-                <div>
-                  <b>${exp.titre || exp.poste || ''}</b> (${exp.date || ''})<br>
-                  ${exp.entreprise ? `<i>${exp.entreprise}</i><br>` : ''}
-                  ${exp.description || ''}
+                <div class="exp-bloc">
+                  <div class="exp-title">${exp.titre || exp.poste || ''}<span class="exp-date">${exp.date || ''}</span></div>
+                  ${exp.entreprise ? `<div style="font-size:13px;color:#666;margin-bottom:2px;">${exp.entreprise}</div>` : ''}
+                  <div class="exp-desc">${exp.description || ''}</div>
                 </div>
-              `).join('<br>') : '<div>Aucune expérience renseignée.</div>'
-            }
-          </div>
-          <div class="section-title">Formations</div>
-          <div class="section-content">
-            ${
-              Array.isArray(formations) && formations.length ?
+              `).join('') : '<div>Aucune expérience renseignée.</div>'
+          }
+        </div>
+        <div class="main-section">
+          <div class="main-title">Formation</div>
+          ${
+            Array.isArray(formations) && formations.length ?
               formations.map(form => `
-                <div>
-                  <b>${form.titre || ''}</b> (${form.date || ''})<br>
-                  <i>${form.ecole || ''}</i>
+                <div class="exp-bloc">
+                  <div class="exp-title">${form.titre || ''}<span class="exp-date">${form.date || ''}</span></div>
+                  ${form.ecole ? `<div style="font-size:13px;color:#666;margin-bottom:2px;">${form.ecole}</div>` : ''}
                 </div>
-              `).join('<br>') : '<div>Aucune formation renseignée.</div>'
-            }
-          </div>
-          <div class="section-title">Savoirs-être</div>
-          <div class="section-content">
-            ${Array.isArray(savoirEtre) && savoirEtre.length ?
-              savoirEtre.map(s => s).join(', ') :
-              '<div>Aucun savoir-être renseigné.</div>'}
+              `).join('') : '<div>Aucune formation renseignée.</div>'
+          }
+        </div>
+        <div class="main-section">
+          <div class="main-title">Savoirs-être</div>
+          <div>
+            ${Array.isArray(savoirEtre) && savoirEtre.length ? savoirEtre.map(s => `<span class="skills-badge">${s}</span>`).join(' ') : 'Aucun savoir-être renseigné.'}
           </div>
         </div>
       </div>
-    </body>
-    </html>
-    `;
-  }
+    </div>
+  </body>
+  </html>
+  `;
+}
+
   
