@@ -14,7 +14,7 @@ require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
 const puppeteer = require('puppeteer');
-const { getCvHtml_Template1 } = require('./app/templates/CvTemplatesHtml');
+const { getCvHtml_Template1 } = require('../app/templates/CvTemplatesHtml');
 app.use(express.static('public'));
 
 
