@@ -383,6 +383,7 @@ export default function JobForm() {
       setOffres([]);
       setFeedbackIA('');
       setPropositions([
+        { title: "Découvrir les métiers du numérique (roadmap.sh)", url: "https://roadmap.sh" },
         { title: "Formations à distance (OpenClassrooms)", url: "https://openclassrooms.com/fr/" },
         { title: "Bilan de compétences (CPF)", url: "https://moncompteformation.gouv.fr/" }
       ]);
@@ -417,7 +418,7 @@ export default function JobForm() {
       if (poste) formData.append('poste', poste);
       if (typeContrat) formData.append('typeContrat', typeContrat);
 
-      const resp = await fetch('https://test-backend-push.onrender.com/api/smart-jobs', {
+      const resp = await fetch('https://cap-backend-new.onrender.com/api/smart-jobs', {
         method: 'POST',
         body: formData,
       });
@@ -442,7 +443,6 @@ export default function JobForm() {
       setOffres([]);
       setFeedbackIA('');
       setPropositions([
-        { title: "Découvrir les métiers du numérique (roadmap.sh)", url: "https://roadmap.sh" },
         { title: "Formations à distance (OpenClassrooms)", url: "https://openclassrooms.com/fr/" },
         { title: "Bilan de compétences (CPF)", url: "https://moncompteformation.gouv.fr/" }
       ]);
@@ -601,4 +601,5 @@ const styles = StyleSheet.create({
   applyBtnText: { color: '#111', fontWeight: '700', fontSize: 16, marginLeft: 4 },
   compSwitchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 16, marginTop: 4 },
 });
+
 
