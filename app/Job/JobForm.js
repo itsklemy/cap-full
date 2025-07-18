@@ -3,72 +3,17 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Location from 'expo-location';
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, Linking, Dimensions, Switch
+  ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, Linking, Dimensions, Switch, Keyboard
 } from 'react-native';
 
 const ACCENT = '#1DFFC2';
 const BG = '#F5FFFC';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
-function Input({ label, value, onChange, placeholder = '', keyboardType = 'default', autoFocus = false }) {
-  const inputRef = useRef(null);
-  useEffect(() => { if (autoFocus && inputRef.current) inputRef.current.focus(); }, [autoFocus]);
-  return (
-    <View style={styles.inputGroup}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        ref={inputRef}
-        style={styles.input}
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        keyboardType={keyboardType}
-        placeholderTextColor="#9CC9C3"
-        autoCapitalize="sentences"
-        autoFocus={autoFocus}
-      />
-    </View>
-  );
-}
-
-function DynamicList({ label, data, onAdd, onUpdate, onRemove, fields, addText }) {
-  return (
-    <View style={{ marginBottom: 18, width: '100%' }}>
-      {label ? <Text style={styles.sectionSubTitle}>{label}</Text> : null}
-      <View style={styles.listContainer}>
-        <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled>
-          {data.map((item, i) => (
-            <View key={i} style={styles.expCard}>
-              {fields.map((f, j) => (
-                <TextInput
-                  key={f.key}
-                  style={[styles.inputFlex, { marginBottom: j < fields.length - 1 ? 4 : 0 }]}
-                  value={item[f.key]}
-                  onChangeText={t => onUpdate(i, f.key, t)}
-                  placeholder={f.placeholder}
-                  placeholderTextColor="#9CC9C3"
-                  autoCapitalize={f.autoCapitalize || 'sentences'}
-                  keyboardType={f.keyboardType || 'default'}
-                />
-              ))}
-              <TouchableOpacity onPress={() => onRemove(i)} style={{ position: 'absolute', right: -4, top: -8 }}>
-                <Ionicons name="close-outline" size={22} color="#ff6464" />
-              </TouchableOpacity>
-            </View>
-          ))}
-        </ScrollView>
-      </View>
-      <TouchableOpacity onPress={onAdd}>
-        <Text style={styles.addText}>{addText || '+ Ajouter'}</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
 export default function JobForm() {
   const [step, setStep] = useState(0);
 
-  // Etat formulaire
+  // Form states
   const [nom, setNom] = useState('');
   const [prenom, setPrenom] = useState('');
   const [mail, setMail] = useState('');
@@ -80,16 +25,14 @@ export default function JobForm() {
   const [competences, setCompetences] = useState([]);
   const [savoirEtre, setSavoirEtre] = useState([]);
   const [experiences, setExperiences] = useState([]);
-  const [importedCv, setImportedCv] = useState(null);
 
-  // Pour l'import ou la génération
+  // For import/generation
+  const [importedCv, setImportedCv] = useState(null);
   const [loading, setLoading] = useState(false);
   const [offres, setOffres] = useState([]);
   const [cvGenUrl, setCvGenUrl] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [competenceMode, setCompetenceMode] = useState(false);
-
-  // --- Feedback IA & suggestions de réorientation ---
   const [feedbackIA, setFeedbackIA] = useState('');
   const [propositions, setPropositions] = useState([]);
 
@@ -107,290 +50,173 @@ export default function JobForm() {
     })();
   }, []);
 
-  // Feedback IA (logique locale simple, personnalisable plus tard)
-  function generateFeedbackIA(profile, offresTrouvees) {
-    if (offresTrouvees && offresTrouvees.length > 0) {
-      setFeedbackIA(
-        `Bravo ! Ton profil ressort principalement pour le métier de "${poste || offresTrouvees[0]?.title || '...' }".`
-      );
-      setPropositions([]);
-    } else {
-      setFeedbackIA("Aucune offre trouvée ? Explore d'autres voies possibles ou booste ton profil !");
-      setPropositions([
-        { title: "Découvrir les métiers du numérique (roadmap.sh)", url: "https://roadmap.sh" },
-        { title: "Formations à distance (OpenClassrooms)", url: "https://openclassrooms.com/fr/" },
-        { title: "Bilan de compétences (CPF)", url: "https://moncompteformation.gouv.fr/" },
-      ]);
-    }
-  }
-
-  // =========== 0. PAGE D'ACCUEIL ===========
-  if (step === 0) return (
+  // ==================== 1. INFOS PERSONNELLES ====================
+  if (step === 1) return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.homeContainer}>
-        <Ionicons name="rocket-outline" size={40} color={ACCENT} style={{ alignSelf: 'center', marginBottom: 10, marginTop: 10 }} />
-        <Text style={styles.brandHome}>CV Intelligent</Text>
-        <Text style={styles.sloganHome}>
-          Un <Text style={{ color: ACCENT, fontWeight: 'bold' }}>CV parfait</Text> généré par l’IA.<Text style={{ color: ACCENT }}> Obtiens des offres ciblées en 3 étapes.</Text>
-        </Text>
-        <View style={styles.stepsContainer}>
-          <View style={styles.stepDotActive}><Text style={styles.stepDotText}>1</Text></View>
-          <View style={styles.stepLine} />
-          <View style={styles.stepDot}><Text style={styles.stepDotText}>2</Text></View>
-          <View style={styles.stepLine} />
-          <View style={styles.stepDot}><Text style={styles.stepDotText}>3</Text></View>
+      <ScrollView contentContainerStyle={styles.centeredForm} keyboardShouldPersistTaps="handled">
+        <View style={styles.cvCard}>
+          <Text style={styles.stepTitle}>
+            <Ionicons name="person-outline" size={28} color={ACCENT} />  Informations personnelles
+          </Text>
+          <UniformInput label="Prénom" value={prenom} onChange={setPrenom} placeholder="Clémence" icon="person-outline" autoFocus />
+          <UniformInput label="Nom" value={nom} onChange={setNom} placeholder="Bouchot" icon="person-outline" />
+          <UniformInput label="Email" value={mail} onChange={setMail} placeholder="clemence@email.com" keyboardType="email-address" icon="mail-outline" />
+          <UniformInput label="Téléphone" value={tel} onChange={setTel} placeholder="06..." keyboardType="phone-pad" icon="call-outline" />
+          <UniformInput label="Ville" value={ville} onChange={setVille} placeholder="Annecy" icon="location-outline" />
+          <UniformInput label="Adresse complète (optionnel)" value={adresse} onChange={setAdresse} placeholder="5 rue des fleurs, Annecy" icon="home-outline" />
         </View>
-        <View style={styles.stepLabelsRow}>
-          <Text style={styles.stepLabel}>Infos</Text>
-          <Text style={styles.stepLabel}>Expériences</Text>
-          <Text style={styles.stepLabel}>Compétences</Text>
-        </View>
-        <Text style={styles.homeDesc}>
-          <Text style={{ fontWeight: '700' }}>Remplis les 3 étapes guidées</Text> pour créer un CV optimisé, personnalisé, prêt à être téléchargé. <Text style={{ color: ACCENT, fontWeight: '600' }}>Découvre en 1 clic toutes les offres qui te correspondent.</Text>
-        </Text>
-        <View style={{ marginTop: 34, width: '100%', alignItems: 'center' }}>
-          <TouchableOpacity style={styles.bigBtn} onPress={() => setStep(1)}>
-            <Ionicons name="bulb-outline" size={24} color="#111" style={{ marginRight: 8 }} />
-            <Text style={styles.bigBtnText}>Commencer</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.bigBtnSec} onPress={() => setStep(4)}>
-            <Ionicons name="cloud-upload-outline" size={24} color={ACCENT} style={{ marginRight: 8 }} />
-            <Text style={styles.bigBtnTextSec}>Importer un CV</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+        <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(2)}>
+          <Text style={styles.nextBtnText}>Suivant</Text>
+          <Ionicons name="arrow-forward-outline" size={24} color="#fff" style={{ marginLeft: 5 }} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.linkBtn} onPress={() => setStep(0)}>
+          <Text style={styles.link}>← Accueil</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
   );
 
-  // ...imports et autres parties de ton code...
+  // ==================== 2. EXPÉRIENCES ====================
+  if (step === 2) return (
+    <SafeAreaView style={styles.safe}>
+      <ScrollView contentContainerStyle={styles.centeredForm} keyboardShouldPersistTaps="handled">
+        <View style={styles.cvCard}>
+          <Text style={styles.stepTitle}>
+            <Ionicons name="briefcase-outline" size={25} color={ACCENT} />  Expériences
+          </Text>
+          {experiences.map((exp, idx) => (
+            <View key={idx} style={styles.expCardModern}>
+              <UniformInput
+                label="Poste occupé"
+                value={exp.poste}
+                onChange={txt => {
+                  const arr = [...experiences];
+                  arr[idx].poste = txt;
+                  setExperiences(arr);
+                }}
+                icon="build-outline"
+                placeholder="Poste"
+              />
+              <UniformInput
+                label="Entreprise"
+                value={exp.entreprise}
+                onChange={txt => {
+                  const arr = [...experiences];
+                  arr[idx].entreprise = txt;
+                  setExperiences(arr);
+                }}
+                icon="business-outline"
+                placeholder="Entreprise"
+              />
+              <UniformInput
+                label="Début"
+                value={exp.debut}
+                onChange={txt => {
+                  const arr = [...experiences];
+                  arr[idx].debut = txt;
+                  setExperiences(arr);
+                }}
+                icon="calendar-outline"
+                placeholder="06/2023"
+              />
+              <UniformInput
+                label="Fin"
+                value={exp.fin}
+                onChange={txt => {
+                  const arr = [...experiences];
+                  arr[idx].fin = txt;
+                  setExperiences(arr);
+                }}
+                icon="calendar-outline"
+                placeholder='Fin (ou "actuel")'
+              />
+              <TouchableOpacity
+                onPress={() => setExperiences(experiences.filter((_, j) => j !== idx))}
+                style={styles.removeExpBtn}
+              >
+                <Ionicons name="close-circle" size={22} color="#ff6464" />
+              </TouchableOpacity>
+            </View>
+          ))}
+          <TouchableOpacity
+            onPress={() => setExperiences([...experiences, { poste: '', entreprise: '', debut: '', fin: '' }])}
+            style={styles.addExpBtn}
+          >
+            <Ionicons name="add-circle-outline" size={22} color={ACCENT} />
+            <Text style={styles.addText}>Ajouter une expérience</Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(3)}>
+          <Text style={styles.nextBtnText}>Suivant</Text>
+          <Ionicons name="arrow-forward-outline" size={24} color="#fff" style={{ marginLeft: 5 }} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.linkBtn} onPress={() => setStep(1)}>
+          <Text style={styles.link}>← Retour</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
+  );
 
-// =========== 1. INFOS ===========
-if (step === 1) return (
-  <SafeAreaView style={styles.safe}>
-    <ScrollView contentContainerStyle={styles.centeredForm}>
-      <View style={styles.cvCard}>
-        <Text style={styles.stepTitle}>
-          <Ionicons name="person-outline" size={28} color={ACCENT} />  Informations personnelles
-        </Text>
-        <UniformInput label="Prénom" value={prenom} onChange={setPrenom} placeholder="Clémence" icon="person-outline" autoFocus />
-        <UniformInput label="Nom" value={nom} onChange={setNom} placeholder="Bouchot" icon="person-outline" />
-        <UniformInput label="Email" value={mail} onChange={setMail} placeholder="clemence@email.com" keyboardType="email-address" icon="mail-outline" />
-        <UniformInput label="Téléphone" value={tel} onChange={setTel} placeholder="06..." keyboardType="phone-pad" icon="call-outline" />
-        <UniformInput label="Ville" value={ville} onChange={setVille} placeholder="Annecy" icon="location-outline" />
-        <UniformInput label="Adresse complète (optionnel)" value={adresse} onChange={setAdresse} placeholder="5 rue des fleurs, Annecy" icon="home-outline" />
-      </View>
-      <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(2)}>
-        <Text style={styles.nextBtnText}>Suivant</Text>
-        <Ionicons name="arrow-forward-outline" size={24} color="#fff" style={{ marginLeft: 5 }} />
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.linkBtn} onPress={() => setStep(0)}>
-        <Text style={styles.link}>← Accueil</Text>
-      </TouchableOpacity>
-    </ScrollView>
-  </SafeAreaView>
-);
-
-// =========== 2. EXPÉRIENCES ===========
-if (step === 2) return (
-  <SafeAreaView style={styles.safe}>
-    <ScrollView contentContainerStyle={styles.centeredForm}>
-      <View style={styles.cvCard}>
-        <Text style={styles.stepTitle}>
-          <Ionicons name="briefcase-outline" size={25} color={ACCENT} />  Expériences
-        </Text>
-        {experiences.map((exp, idx) => (
-          <View key={idx} style={styles.expCardModern}>
-            <UniformInput
-              label="Poste occupé"
-              value={exp.poste}
-              onChange={txt => {
-                const arr = [...experiences];
-                arr[idx].poste = txt;
-                setExperiences(arr);
-              }}
-              icon="build-outline"
-              placeholder="Poste"
-            />
-            <UniformInput
-              label="Entreprise"
-              value={exp.entreprise}
-              onChange={txt => {
-                const arr = [...experiences];
-                arr[idx].entreprise = txt;
-                setExperiences(arr);
-              }}
-              icon="business-outline"
-              placeholder="Entreprise"
-            />
-            <UniformInput
-              label="Début"
-              value={exp.debut}
-              onChange={txt => {
-                const arr = [...experiences];
-                arr[idx].debut = txt;
-                setExperiences(arr);
-              }}
-              icon="calendar-outline"
-              placeholder="06/2023"
-            />
-            <UniformInput
-              label="Fin"
-              value={exp.fin}
-              onChange={txt => {
-                const arr = [...experiences];
-                arr[idx].fin = txt;
-                setExperiences(arr);
-              }}
-              icon="calendar-outline"
-              placeholder='Fin (ou "actuel")'
-            />
-            <TouchableOpacity
-              onPress={() => setExperiences(experiences.filter((_, j) => j !== idx))}
-              style={styles.removeExpBtn}
-            >
-              <Ionicons name="close-circle" size={22} color="#ff6464" />
-            </TouchableOpacity>
+  // ==================== 3. COMPÉTENCES & SOFT SKILLS ====================
+  if (step === 3) return (
+    <SafeAreaView style={styles.safe}>
+      <ScrollView contentContainerStyle={styles.centeredForm} keyboardShouldPersistTaps="handled">
+        <View style={styles.cvCard}>
+          <Text style={styles.stepTitle}>
+            <Ionicons name="sparkles-outline" size={24} color={ACCENT} />  Compétences & Soft Skills
+          </Text>
+          <ChipsModern
+            label="Compétences"
+            data={competences}
+            setData={setCompetences}
+            accent={ACCENT}
+            placeholder="Compétence"
+          />
+          <ChipsModern
+            label="Soft skills"
+            data={savoirEtre}
+            setData={setSavoirEtre}
+            accent={ACCENT}
+            placeholder="Ex: autonome, créatif…"
+          />
+          <View style={styles.compSwitchRow}>
+            <Ionicons name="list-outline" size={20} color="#222" style={{ marginRight: 6 }} />
+            <Text style={{ fontSize: 16 }}>Recherche par compétences</Text>
+            <Switch value={competenceMode} onValueChange={setCompetenceMode} trackColor={{ true: ACCENT }} />
           </View>
-        ))}
+        </View>
+        <TouchableOpacity style={styles.nextBtn} onPress={() => handleFindJobs(competenceMode)} disabled={loading}>
+          {loading ? <ActivityIndicator color="#111" /> : <>
+            <Text style={styles.nextBtnText}>Trouver des offres IA</Text>
+            <Ionicons name="search-outline" size={22} color="#fff" style={{ marginLeft: 5 }} />
+          </>}
+        </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => setExperiences([...experiences, { poste: '', entreprise: '', debut: '', fin: '' }])}
-          style={styles.addExpBtn}
-        >
-          <Ionicons name="add-circle-outline" size={22} color={ACCENT} />
-          <Text style={styles.addText}>Ajouter une expérience</Text>
-        </TouchableOpacity>
-      </View>
-      <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(3)}>
-        <Text style={styles.nextBtnText}>Suivant</Text>
-        <Ionicons name="arrow-forward-outline" size={24} color="#fff" style={{ marginLeft: 5 }} />
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.linkBtn} onPress={() => setStep(1)}>
-        <Text style={styles.link}>← Retour</Text>
-      </TouchableOpacity>
-    </ScrollView>
-  </SafeAreaView>
-);
-
-// =========== 3. COMPÉTENCES ===========
-if (step === 3) return (
-  <SafeAreaView style={styles.safe}>
-    <ScrollView contentContainerStyle={styles.centeredForm}>
-      <View style={styles.cvCard}>
-        <Text style={styles.stepTitle}>
-          <Ionicons name="sparkles-outline" size={24} color={ACCENT} />  Compétences & Soft Skills
-        </Text>
-        <ChipsModern
-          label="Compétences"
-          data={competences}
-          setData={setCompetences}
-          accent={ACCENT}
-          placeholder="Compétence"
-        />
-        <ChipsModern
-          label="Soft skills"
-          data={savoirEtre}
-          setData={setSavoirEtre}
-          accent={ACCENT}
-          placeholder="Ex: autonome, créatif…"
-        />
-      </View>
-      {/* Boutons de navigation */}
-      <TouchableOpacity style={styles.nextBtn} onPress={() => handleFindJobs(competenceMode)} disabled={loading}>
-        {loading ? <ActivityIndicator color="#111" /> : <>
-          <Text style={styles.nextBtnText}>Trouver des offres IA</Text>
-          <Ionicons name="search-outline" size={22} color="#fff" style={{ marginLeft: 5 }} />
-        </>}
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.linkBtn} onPress={() => setStep(2)}>
-        <Text style={styles.link}>← Retour</Text>
-      </TouchableOpacity>
-      {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
-    </ScrollView>
-  </SafeAreaView>
-);
-
-// ----------- UNIFORME INPUT -----------
-function UniformInput({ label, value, onChange, placeholder, keyboardType, icon, autoFocus }) {
-  return (
-    <View style={{ marginBottom: 12 }}>
-      <Text style={{ color: '#287E6F', fontWeight: '600', marginBottom: 3 }}>{label}</Text>
-      <View style={{
-        flexDirection: 'row', alignItems: 'center', backgroundColor: '#f7fcfa',
-        borderWidth: 1, borderColor: '#b7e9d9', borderRadius: 13, paddingHorizontal: 10
-      }}>
-        {icon && <Ionicons name={icon} size={19} color="#A0EAD3" style={{ marginRight: 6 }} />}
-        <TextInput
-          style={{ flex: 1, paddingVertical: 9, fontSize: 16, color: '#222' }}
-          value={value}
-          onChangeText={onChange}
-          placeholder={placeholder}
-          placeholderTextColor="#b0cfc6"
-          keyboardType={keyboardType || 'default'}
-          autoFocus={autoFocus}
-        />
-      </View>
-    </View>
-  );
-}
-
-// ----------- CHIPS MODERN -----------
-function ChipsModern({ label, data, setData, accent, placeholder }) {
-  const [value, setValue] = useState('');
-  return (
-    <View style={{ marginBottom: 15 }}>
-      <Text style={{ color: '#287E6F', fontWeight: '600', marginBottom: 5 }}>{label}</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 7 }}>
-        {data.map((item, i) => (
-          <View key={i} style={{
-            backgroundColor: accent + '22', borderRadius: 16, flexDirection: 'row', alignItems: 'center',
-            paddingHorizontal: 13, marginRight: 7, marginBottom: 5
-          }}>
-            <Text style={{ color: accent, fontWeight: '600', fontSize: 14 }}>{item}</Text>
-            <TouchableOpacity onPress={() => setData(data.filter((_, j) => j !== i))}>
-              <Ionicons name="close" size={16} color={accent} style={{ marginLeft: 3 }} />
-            </TouchableOpacity>
-          </View>
-        ))}
-      </View>
-      <View style={{
-        flexDirection: 'row', alignItems: 'center', backgroundColor: '#f7fcfa', borderRadius: 14,
-        borderWidth: 1, borderColor: '#b7e9d9', paddingHorizontal: 10
-      }}>
-        <TextInput
-          style={{ flex: 1, fontSize: 15, color: '#222', paddingVertical: 8 }}
-          placeholder={placeholder}
-          placeholderTextColor="#b0cfc6"
-          value={value}
-          onChangeText={setValue}
-          onSubmitEditing={() => {
-            if (value.trim().length > 0 && !data.includes(value.trim())) {
-              setData([...data, value.trim()]);
-              setValue('');
-            }
+          style={[styles.nextBtn, { marginTop: 8, backgroundColor: '#fff', borderWidth: 2, borderColor: ACCENT }]}
+          onPress={() => {
+            if (cvGenUrl && cvGenUrl.startsWith('http')) Linking.openURL(cvGenUrl);
+            else Alert.alert('CV non généré', "Clique d'abord sur 'Trouver des offres IA' pour générer ton CV.");
           }}
-        />
-        <TouchableOpacity onPress={() => {
-          if (value.trim().length > 0 && !data.includes(value.trim())) {
-            setData([...data, value.trim()]);
-            setValue('');
-          }
-        }}>
-          <Ionicons name="add" size={18} color={accent} />
+        >
+          <Ionicons name="download-outline" size={22} color={ACCENT} style={{ marginRight: 8 }} />
+          <Text style={[styles.nextBtnText, { color: ACCENT }]}>Aperçu / Générer mon CV IA</Text>
         </TouchableOpacity>
-      </View>
-    </View>
+        <TouchableOpacity style={styles.linkBtn} onPress={() => setStep(2)}>
+          <Text style={styles.link}>← Retour</Text>
+        </TouchableOpacity>
+        {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
+      </ScrollView>
+    </SafeAreaView>
   );
-}
 
-
-  // =========== 4. IMPORT CV ===========
+  // ==================== 4. IMPORT CV PDF ====================
   if (step === 4) return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.centeredForm}>
+      <ScrollView contentContainerStyle={styles.centeredForm} keyboardShouldPersistTaps="handled">
         <Text style={styles.stepTitle}><Ionicons name="document-outline" size={27} color={ACCENT} />  Importer un CV PDF</Text>
         <View style={{ width: '96%', marginBottom: 16 }}>
-          <Input label="Ville" value={ville} onChange={setVille} placeholder="Annecy" />
-          <Input label="Intitulé du poste recherché" value={poste} onChange={setPoste} placeholder="Développeur, Designer..." />
+          <UniformInput label="Ville" value={ville} onChange={setVille} placeholder="Annecy" icon="location-outline" />
+          <UniformInput label="Intitulé du poste recherché" value={poste} onChange={setPoste} placeholder="Développeur, Designer..." icon="briefcase-outline" />
           <View style={styles.contractRow}>
             {['CDI', 'CDD', 'INTERIM'].map(c => (
               <TouchableOpacity
@@ -434,7 +260,7 @@ function ChipsModern({ label, data, setData, accent, placeholder }) {
     </SafeAreaView>
   );
 
-  // =========== 5. RÉSULTATS ===========
+  // ==================== 5. RÉSULTATS & FEEDBACK ====================
   if (step === 5) return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.centeredForm}>
@@ -461,7 +287,7 @@ function ChipsModern({ label, data, setData, accent, placeholder }) {
             <Text style={{ color: '#555', marginTop: 16, textAlign: 'center' }}>Aucune offre trouvée ou service indisponible.</Text>
           ) : null}
         </View>
-        {/* --- Feedback IA & propositions --- */}
+        {/* Feedback IA & suggestions */}
         {(feedbackIA || (propositions && propositions.length > 0)) && (
           <View style={{ backgroundColor: '#E7FFF7', borderRadius: 15, padding: 16, marginVertical: 16, width: '97%' }}>
             {feedbackIA ? (
@@ -469,7 +295,7 @@ function ChipsModern({ label, data, setData, accent, placeholder }) {
             ) : null}
             {propositions && propositions.length > 0 && (
               <View>
-                <Text style={{ color: '#287E6F', fontWeight: '600', marginBottom: 6 }}>Suggestions pour avancer :</Text>
+                <Text style={{ color: '#287E6F', fontWeight: '600', marginBottom: 6 }}>Suggestions pour avancer :</Text>
                 {propositions.map((p, idx) => (
                   <TouchableOpacity key={idx} onPress={() => Linking.openURL(p.url)} style={{ marginBottom: 6 }}>
                     <Text style={{ color: ACCENT, fontWeight: '600', fontSize: 15 }}>• {p.title}</Text>
@@ -479,15 +305,12 @@ function ChipsModern({ label, data, setData, accent, placeholder }) {
             )}
           </View>
         )}
-        {/* --- Aperçu CV IA / demande --- */}
+        {/* Aperçu CV IA / Générer PDF */}
         <TouchableOpacity
           style={[styles.nextBtn, { marginTop: 18, backgroundColor: '#fff', borderColor: ACCENT, borderWidth: 2 }]}
           onPress={() => {
             if (cvGenUrl && cvGenUrl.startsWith('http')) Linking.openURL(cvGenUrl);
-            else Alert.alert(
-              'Fonctionnalité à venir',
-              "Le téléchargement du CV intelligent sera bientôt disponible !\n\n💡 Pour un CV design moderne, dis-nous ce que tu veux (style, couleurs, pictos...)."
-            );
+            else Alert.alert('CV non généré', "Reviens à l'étape 3, clique sur 'Trouver des offres IA', puis reviens ici.");
           }}
         >
           <Ionicons name="download-outline" size={22} color={ACCENT} style={{ marginRight: 8 }} />
@@ -497,7 +320,7 @@ function ChipsModern({ label, data, setData, accent, placeholder }) {
           style={{ ...styles.nextBtn, marginTop: 12, backgroundColor: '#fff', borderWidth: 1, borderColor: '#d0ece7' }}
           onPress={() => Alert.alert(
             "Demande spéciale",
-            "Pour obtenir un CV ou une lettre de motivation moderne, contacte-nous avec tes préférences (style, couleurs, métier...).\n\nOu va sur Canva pour un template instantané !"
+            "Pour un CV ou une lettre de motivation vraiment moderne, contacte-nous avec tes préférences (style, couleurs, métier...).\n\nOu va sur Canva pour un template instantané !"
           )}
         >
           <Ionicons name="create-outline" size={22} color="#444" style={{ marginRight: 8 }} />
@@ -512,6 +335,7 @@ function ChipsModern({ label, data, setData, accent, placeholder }) {
 
   // =================== HANDLERS ===================
   async function handleFindJobs(onlyCompetence = false) {
+    Keyboard.dismiss();
     setLoading(true); setErrorMsg('');
     let backendTimedOut = false;
     const timeout = setTimeout(() => {
@@ -534,7 +358,7 @@ function ChipsModern({ label, data, setData, accent, placeholder }) {
           experiences,
         };
       }
-      const resp = await fetch('https://test-backend-push.onrender.com/api/smart-jobs', {
+      const resp = await fetch('https://cap-backend-new.onrender.com/api/smart-jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -545,30 +369,35 @@ function ChipsModern({ label, data, setData, accent, placeholder }) {
       let data;
       try { data = JSON.parse(text); } catch { throw new Error('Erreur JSON backend:\n' + text); }
       if (data.error) throw new Error(data.error);
-      const list = (data.smartOffers && data.smartOffers.length > 0)
+      setOffres((data.smartOffers && data.smartOffers.length > 0)
         ? data.smartOffers
-        : (data.offresBrutes || data.offres || []);
-      setOffres(list);
-      if (data.cvPdfUrl) setCvGenUrl(data.cvPdfUrl);
-      // --- Feedback IA automatique
-      generateFeedbackIA(payload, list);
+        : (data.offresBrutes || data.offres || []));
+      setCvGenUrl(data.cvPdfUrl || '');
+      setFeedbackIA(data.feedbackIA || '');
+      setPropositions(data.propositions || []);
       setStep(5);
     } catch (e) {
       clearTimeout(timeout);
       if (backendTimedOut) return;
       setErrorMsg(e.message.includes('Network request failed') || e.message.includes('502') ? "Service indisponible, vérifie ta connexion." : e.message);
       setOffres([]);
-      // --- Feedback IA pour "aucune offre"
-      generateFeedbackIA({}, []);
+      setFeedbackIA('');
+      setPropositions([
+        { title: "Formations à distance (OpenClassrooms)", url: "https://openclassrooms.com/fr/" },
+        { title: "Bilan de compétences (CPF)", url: "https://moncompteformation.gouv.fr/" }
+      ]);
       setStep(5);
     } finally { setLoading(false); }
   }
 
   async function handleImportCv() {
-    const res = await DocumentPicker.getDocumentAsync({ type: 'application/pdf' });
-    if (!res.canceled && res.assets?.[0]) setImportedCv(res.assets[0]);
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: 'application/pdf' });
+      if (!res.canceled && res.assets?.[0]) setImportedCv(res.assets[0]);
+    } catch (e) { setErrorMsg("Erreur lors de l'import du PDF."); }
   }
   async function handleImportAndFindJobs() {
+    Keyboard.dismiss();
     setLoading(true); setErrorMsg('');
     let backendTimedOut = false;
     const timeout = setTimeout(() => {
@@ -599,23 +428,108 @@ function ChipsModern({ label, data, setData, accent, placeholder }) {
       let data;
       try { data = JSON.parse(text); } catch { throw new Error('Erreur JSON backend:\n' + text); }
       if (data.error) throw new Error(data.error);
-      const list = (data.smartOffers && data.smartOffers.length > 0)
+      setOffres((data.smartOffers && data.smartOffers.length > 0)
         ? data.smartOffers
-        : (data.offresBrutes || data.offres || []);
-      setOffres(list);
-      if (data.cvPdfUrl) setCvGenUrl(data.cvPdfUrl);
-      // --- Feedback IA automatique
-      generateFeedbackIA({}, list);
+        : (data.offresBrutes || data.offres || []));
+      setCvGenUrl(data.cvPdfUrl || '');
+      setFeedbackIA(data.feedbackIA || '');
+      setPropositions(data.propositions || []);
       setStep(5);
     } catch (e) {
       clearTimeout(timeout);
       if (backendTimedOut) return;
       setErrorMsg(e.message.includes('Network request failed') || e.message.includes('502') ? "Service indisponible, vérifie ta connexion." : e.message);
       setOffres([]);
-      // --- Feedback IA pour "aucune offre"
-      generateFeedbackIA({}, []);
+      setFeedbackIA('');
+      setPropositions([
+        { title: "Découvrir les métiers du numérique (roadmap.sh)", url: "https://roadmap.sh" },
+        { title: "Formations à distance (OpenClassrooms)", url: "https://openclassrooms.com/fr/" },
+        { title: "Bilan de compétences (CPF)", url: "https://moncompteformation.gouv.fr/" }
+      ]);
       setStep(5);
     } finally { setLoading(false); }
+  }
+
+  // ============ COMPONENTS UNIFORMES ============
+
+  function UniformInput({ label, value, onChange, placeholder, keyboardType, icon, autoFocus }) {
+    const inputRef = useRef(null);
+    useEffect(() => {
+      if (autoFocus && inputRef.current) {
+        setTimeout(() => inputRef.current.focus(), 350);
+      }
+    }, [autoFocus]);
+    return (
+      <View style={{ marginBottom: 12 }}>
+        <Text style={{ color: '#287E6F', fontWeight: '600', marginBottom: 3 }}>{label}</Text>
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', backgroundColor: '#f7fcfa',
+          borderWidth: 1, borderColor: '#b7e9d9', borderRadius: 13, paddingHorizontal: 10
+        }}>
+          {icon && <Ionicons name={icon} size={19} color="#A0EAD3" style={{ marginRight: 6 }} />}
+          <TextInput
+            ref={inputRef}
+            style={{ flex: 1, paddingVertical: 9, fontSize: 16, color: '#222' }}
+            value={value}
+            onChangeText={onChange}
+            placeholder={placeholder}
+            placeholderTextColor="#b0cfc6"
+            keyboardType={keyboardType || 'default'}
+            autoFocus={autoFocus}
+            returnKeyType="done"
+          />
+        </View>
+      </View>
+    );
+  }
+
+  function ChipsModern({ label, data, setData, accent, placeholder }) {
+    const [value, setValue] = useState('');
+    return (
+      <View style={{ marginBottom: 15 }}>
+        <Text style={{ color: '#287E6F', fontWeight: '600', marginBottom: 5 }}>{label}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 7 }}>
+          {data.map((item, i) => (
+            <View key={i} style={{
+              backgroundColor: accent + '22', borderRadius: 16, flexDirection: 'row', alignItems: 'center',
+              paddingHorizontal: 13, marginRight: 7, marginBottom: 5
+            }}>
+              <Text style={{ color: accent, fontWeight: '600', fontSize: 14 }}>{item}</Text>
+              <TouchableOpacity onPress={() => setData(data.filter((_, j) => j !== i))}>
+                <Ionicons name="close" size={16} color={accent} style={{ marginLeft: 3 }} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', backgroundColor: '#f7fcfa', borderRadius: 14,
+          borderWidth: 1, borderColor: '#b7e9d9', paddingHorizontal: 10
+        }}>
+          <TextInput
+            style={{ flex: 1, fontSize: 15, color: '#222', paddingVertical: 8 }}
+            placeholder={placeholder}
+            placeholderTextColor="#b0cfc6"
+            value={value}
+            onChangeText={setValue}
+            onSubmitEditing={() => {
+              if (value.trim().length > 0 && !data.includes(value.trim())) {
+                setData([...data, value.trim()]);
+                setValue('');
+              }
+            }}
+            returnKeyType="done"
+          />
+          <TouchableOpacity onPress={() => {
+            if (value.trim().length > 0 && !data.includes(value.trim())) {
+              setData([...data, value.trim()]);
+              setValue('');
+            }
+          }}>
+            <Ionicons name="add" size={18} color={accent} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
   }
 
 }
