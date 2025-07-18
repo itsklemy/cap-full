@@ -11,6 +11,12 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
 const FormData = require('form-data');
 const { google } = require('googleapis');
 require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
+const puppeteer = require('puppeteer');
+const { getCvHtml_Template1 } = require('./app/templates/CvTemplatesHtml');
+app.use(express.static('public'));
+
 
 // === Vérification ENV au boot ===
 const envVars = [
@@ -600,7 +606,122 @@ Réponds seulement par une liste d’actions ou de suggestions, sans texte super
 app.post('/api/smart-jobs', upload.single('cvFile'), async (req, res) => {
   // TA ROUTE CV/EMPLOI ICI (identique à avant, non modifié ici pour la lisibilité)
 });
+// ==== Smart jobs (CV intelligent ou import) ====
+app.post('/api/smart-jobs', upload.single('cvFile'), async (req, res) => {
+  try {
+    let userProfile = {};
+    if (req.file) {
+      let textContent = '';
+      try {
+        const parsed = await pdfParse(req.file.buffer);
+        textContent = parsed.text;
+        if (textContent.replace(/\s/g, '').length < 50) {
+          textContent = await extractTextWithOCR(req.file.buffer);
+        }
+      } catch (e) {
+        textContent = await extractTextWithOCR(req.file.buffer);
+      }
+      userProfile = { texte: textContent, ville: req.body.ville || '' };
+    } else {
+      userProfile = {
+        nom: req.body.nom, prenom: req.body.prenom, adresse: req.body.adresse, ville: req.body.ville,
+        mail: req.body.mail, tel: req.body.tel, poste: req.body.poste, typeContrat: req.body.typeContrat,
+        competences: req.body.competences || [],
+        savoirEtre: req.body.savoirEtre || [],
+        experiences: req.body.experiences || []
+      };
+      if (typeof userProfile.competences === 'string') userProfile.competences = JSON.parse(userProfile.competences);
+      if (typeof userProfile.savoirEtre === 'string') userProfile.savoirEtre = JSON.parse(userProfile.savoirEtre);
+      if (typeof userProfile.experiences === 'string') userProfile.experiences = JSON.parse(userProfile.experiences);
+    }
 
+    // Recherche d'offres
+    const token = await getPoleEmploiToken().catch(() => null);
+    let offres = [];
+    if (userProfile.poste || userProfile.competences?.length) {
+      let keyword = userProfile.poste || (userProfile.competences?.[0] || '');
+      let ville = userProfile.ville || '';
+      let pe = [], adz = [];
+      if (token) pe = await searchJobsPoleEmploi(token, keyword, ville);
+      adz = await searchJobsAdzuna(keyword, ville);
+      offres = [...pe, ...adz].slice(0, 15);
+    }
+
+    let feedbackIA = '';
+    let propositions = [];
+    // SI AUCUNE OFFRE, générer un prompt de réorientation personnalisé
+    if (offres.length === 0) {
+      // --- NOUVEAU PROMPT IA ---
+      const prompt = `
+Voici le profil d'une personne en recherche d'emploi, pour laquelle aucune offre immédiate n'a été trouvée avec ses critères.
+Détaille :
+1. Une analyse rapide de son parcours et de ses compétences (même si info partielle)
+2. Propose trois axes de réorientation professionnelle concrets, adaptés à son expérience, ses compétences et ses savoir-être. Pour chaque axe, donne :
+- une suggestion de métier réaliste
+- pourquoi ce métier est pertinent
+- la première action concrète à faire pour s’orienter vers cette voie.
+Sois très concret, donne des conseils immédiatement activables (site, contact, formation, etc), en français, sans intro ni blabla.
+
+Profil :
+${JSON.stringify(userProfile, null, 2)}
+      `;
+      try {
+        const resp = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.15,
+          max_tokens: 350
+        });
+        feedbackIA = resp.choices?.[0]?.message?.content?.trim() || "Pas d'analyse IA disponible pour ce profil.";
+      } catch (e) {
+        feedbackIA = "Impossible de générer l’analyse IA.";
+      }
+      // Suggestions de plateformes ou aides (toujours utiles en plus)
+      propositions = [
+        { title: "Formations à distance (OpenClassrooms)", url: "https://openclassrooms.com/fr/" },
+        { title: "Bilan de compétences (CPF)", url: "https://moncompteformation.gouv.fr/" }
+      ];
+    } else {
+      feedbackIA = `Bravo ! Ton profil ressort principalement pour le métier de "${userProfile.poste || offres[0]?.title}".`;
+      propositions = [];
+    }
+
+    // CV IA mock
+    let cvPdfUrl = '';
+
+if ((userProfile.nom && userProfile.prenom) || userProfile.texte) {
+  // Génère le HTML à partir du template
+  const cvHtml = getCvHtml_Template1(userProfile, { mainColor: "#1DFFC2" });
+
+  // Lance puppeteer pour créer le PDF
+  const browser = await puppeteer.launch({ headless: 'new' }); // 'new' recommandé
+  const page = await browser.newPage();
+  await page.setContent(cvHtml, { waitUntil: 'networkidle0' });
+  // Chemin de sortie (assure-toi que le dossier 'public' existe !)
+  const filename = `cv-${Date.now()}-${Math.floor(Math.random()*100000)}.pdf`;
+  const pdfPath = path.join(__dirname, 'public', filename);
+  await page.pdf({ path: pdfPath, format: 'A4', printBackground: true });
+  await browser.close();
+}
+    res.json({
+      smartOffers: offres,
+      feedbackIA,
+      propositions,
+      cvPdfUrl
+    });
+  } catch (e) {
+    res.status(500).json({
+      error: e.message || 'Erreur interne backend',
+      smartOffers: [],
+      feedbackIA: "Erreur dans l’analyse du profil ou du CV. Merci de réessayer.",
+      propositions: [
+        { title: "Faire un bilan de compétences (CPF)", url: "https://moncompteformation.gouv.fr/" },
+        { title: "Essayer d’autres métiers sur Pôle Emploi", url: "https://www.pole-emploi.fr/" }
+      ],
+      cvPdfUrl: ''
+    });
+  }
+});
 // ==== Cached offers endpoint (simple, optionnel) ====
 app.get('/api/offres-cached', async (req, res) => {
   const { motCle = '', ville = '' } = req.query;
@@ -651,3 +772,4 @@ cron.schedule('15 */6 * * *', async () => {
 // ==== Start server ====
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`✅ CAP API running on http://localhost:${PORT}`));
+
