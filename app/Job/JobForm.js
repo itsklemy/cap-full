@@ -1,66 +1,99 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Location from 'expo-location';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
-  ActivityIndicator, Alert,
-  FlatList,
-  KeyboardAvoidingView, Platform,
-  ScrollView,
-  StyleSheet,
-  Text, TextInput,
-  TouchableOpacity,
-  View
+  ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, Linking, Dimensions, Switch
 } from 'react-native';
 
-// INPUT RÉUTILISABLE
-function Input({ label, value, onChange, placeholder='', keyboardType='default' }) {
+const ACCENT = '#1DFFC2';
+const BG = '#F5FFFC';
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
+function Input({ label, value, onChange, placeholder = '', keyboardType = 'default', autoFocus = false }) {
+  const inputRef = useRef(null);
+  useEffect(() => { if (autoFocus && inputRef.current) inputRef.current.focus(); }, [autoFocus]);
   return (
     <View style={styles.inputGroup}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        ref={inputRef}
         style={styles.input}
         value={value}
         onChangeText={onChange}
         placeholder={placeholder}
         keyboardType={keyboardType}
-        placeholderTextColor="#999"
+        placeholderTextColor="#9CC9C3"
+        autoCapitalize="sentences"
+        autoFocus={autoFocus}
       />
     </View>
   );
 }
 
-const ACCENT = '#1DFFC2';
+function DynamicList({ label, data, onAdd, onUpdate, onRemove, fields, addText }) {
+  return (
+    <View style={{ marginBottom: 18, width: '100%' }}>
+      {label ? <Text style={styles.sectionSubTitle}>{label}</Text> : null}
+      <View style={styles.listContainer}>
+        <ScrollView style={{ maxHeight: 220 }} nestedScrollEnabled>
+          {data.map((item, i) => (
+            <View key={i} style={styles.expCard}>
+              {fields.map((f, j) => (
+                <TextInput
+                  key={f.key}
+                  style={[styles.inputFlex, { marginBottom: j < fields.length - 1 ? 4 : 0 }]}
+                  value={item[f.key]}
+                  onChangeText={t => onUpdate(i, f.key, t)}
+                  placeholder={f.placeholder}
+                  placeholderTextColor="#9CC9C3"
+                  autoCapitalize={f.autoCapitalize || 'sentences'}
+                  keyboardType={f.keyboardType || 'default'}
+                />
+              ))}
+              <TouchableOpacity onPress={() => onRemove(i)} style={{ position: 'absolute', right: -4, top: -8 }}>
+                <Ionicons name="close-outline" size={22} color="#ff6464" />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+      <TouchableOpacity onPress={onAdd}>
+        <Text style={styles.addText}>{addText || '+ Ajouter'}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 export default function JobForm() {
-  const [screen, setScreen] = useState('home');
+  const [step, setStep] = useState(0);
 
-  // Infos du formulaire
+  // Etat formulaire
   const [nom, setNom] = useState('');
   const [prenom, setPrenom] = useState('');
-  const [adresse, setAdresse] = useState('');
   const [mail, setMail] = useState('');
+  const [adresse, setAdresse] = useState('');
+  const [ville, setVille] = useState('');
   const [tel, setTel] = useState('');
   const [poste, setPoste] = useState('');
-  const [domaine, setDomaine] = useState('');
-  const [typeContrat, setTypeContrat] = useState(null);
-
+  const [typeContrat, setTypeContrat] = useState('CDI');
   const [competences, setCompetences] = useState([]);
   const [savoirEtre, setSavoirEtre] = useState([]);
-
-  // CV/lettre en import
+  const [experiences, setExperiences] = useState([]);
   const [importedCv, setImportedCv] = useState(null);
-  const [importedLetter, setImportedLetter] = useState(null);
 
-  // Localisation
-  const [fallbackCity, setFallbackCity] = useState('');
-
-  // Résultats/offres
-  const [offres, setOffres] = useState([]);
+  // Pour l'import ou la génération
   const [loading, setLoading] = useState(false);
+  const [offres, setOffres] = useState([]);
+  const [cvGenUrl, setCvGenUrl] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [competenceMode, setCompetenceMode] = useState(false);
 
-  // Permissions geo à l'ouverture
+  // --- Feedback IA & suggestions de réorientation ---
+  const [feedbackIA, setFeedbackIA] = useState('');
+  const [propositions, setPropositions] = useState([]);
+
+  // Geoloc smart
   useEffect(() => {
     (async () => {
       try {
@@ -68,315 +101,590 @@ export default function JobForm() {
         if (status === 'granted') {
           const loc = await Location.getCurrentPositionAsync({});
           const [addr] = await Location.reverseGeocodeAsync(loc.coords);
-          if (addr.city) setFallbackCity(addr.city);
+          if (addr.city) setVille(addr.city);
         }
-      } catch (err) {
-        console.warn('Erreur géoloc:', err);
-      }
+      } catch { }
     })();
   }, []);
 
-  // Gérer l'import de CV/lettre
-  const handleImportCv = async () => {
-    const res = await DocumentPicker.getDocumentAsync({ type: 'application/pdf' });
-    if (!res.canceled && res.assets?.[0]) setImportedCv(res.assets[0]);
-  };
-  const handleImportLetter = async () => {
-    const res = await DocumentPicker.getDocumentAsync({ type: 'application/pdf' });
-    if (!res.canceled && res.assets?.[0]) setImportedLetter(res.assets[0]);
-  };
-
-  // Helpers compétences/savoirs-être
-  const addCompetence = () => setCompetences([...competences, '']);
-  const updateCompetence = (i, text) => {
-    const list = [...competences]; list[i] = text; setCompetences(list);
-  };
-  const removeCompetence = i => setCompetences(competences.filter((_, idx) => idx !== i));
-  const addSavoirEtre = () => setSavoirEtre([...savoirEtre, '']);
-  const updateSavoirEtre = (i, text) => {
-    const list = [...savoirEtre]; list[i] = text; setSavoirEtre(list);
-  };
-  const removeSavoirEtre = i => setSavoirEtre(savoirEtre.filter((_, idx) => idx !== i));
-
-  // Fonction de recherche d'offres
-  const handleFindJobs = async () => {
-    setLoading(true);
-    setErrorMsg('');
-    try {
-      // Compose mot-clé complet avec poste, domaine, compétences
-      const motCle = [poste, domaine, ...competences].filter(Boolean).join(' ');
-      const villeRecherche = fallbackCity || 'Paris';
-
-      // PAYLOAD GÉNÉRAL (toujours utilisé)
-      const payload = {
-        nom, prenom, adresse, mail, tel, poste, domaine, typeContrat,
-        competences, savoirEtre,
-        ville: villeRecherche,
-        // On ne met pas cvFile ni lettreFile ici, car ça dépend du format !
-      };
-
-      // ===== NOUVELLE LOGIQUE : envoie FormData S'IL Y A UN FICHIER =====
-      let resp;
-      if (importedCv || importedLetter) {
-        // --- Cas FormData avec fichiers PDF ---
-        const formData = new FormData();
-        // Ajout des champs classiques (en string !)
-        Object.entries(payload).forEach(([k, v]) => {
-          // Stringify arrays/objets pour backend Node/multer
-          if (Array.isArray(v) || typeof v === 'object') {
-            formData.append(k, JSON.stringify(v));
-          } else if (v !== undefined && v !== null) {
-            formData.append(k, v);
-          }
-        });
-        // Ajout fichiers
-        if (importedCv) {
-          formData.append('cvFile', {
-            uri: importedCv.uri,
-            name: importedCv.name || 'cv.pdf',
-            type: 'application/pdf',
-          });
-        }
-        if (importedLetter) {
-          formData.append('lettreFile', {
-            uri: importedLetter.uri,
-            name: importedLetter.name || 'lettre.pdf',
-            type: 'application/pdf',
-          });
-        }
-        resp = await fetch('https://test-backend-push.onrender.com/api/smart-jobs', {
-          method: 'POST',
-          headers: {
-            // Ne pas définir 'Content-Type' pour FormData
-          },
-          body: formData,
-        });
-      } else {
-        // --- Cas JSON classique ---
-        resp = await fetch('https://test-backend-push.onrender.com/api/smart-jobs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      }
-
-      // Pour debug, affiche la réponse brute
-      const text = await resp.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (err) {
-        throw new Error('Erreur JSON (Backend):\n' + text);
-      }
-
-      if (data.error) throw new Error(data.error);
-      const list = (data.smartOffers && data.smartOffers.length > 0)
-        ? data.smartOffers
-        : (data.offresBrutes || data.offres || []);
-      if (!Array.isArray(list) || list.length === 0) throw new Error("Aucune offre trouvée. Essaie d'élargir tes critères.");
-      setOffres(list);
-      setScreen('offers');
-    } catch (e) {
-      setErrorMsg(e.message);
-    } finally {
-      setLoading(false);
+  // Feedback IA (logique locale simple, personnalisable plus tard)
+  function generateFeedbackIA(profile, offresTrouvees) {
+    if (offresTrouvees && offresTrouvees.length > 0) {
+      setFeedbackIA(
+        `Bravo ! Ton profil ressort principalement pour le métier de "${poste || offresTrouvees[0]?.title || '...' }".`
+      );
+      setPropositions([]);
+    } else {
+      setFeedbackIA("Aucune offre trouvée ? Explore d'autres voies possibles ou booste ton profil !");
+      setPropositions([
+        { title: "Découvrir les métiers du numérique (roadmap.sh)", url: "https://roadmap.sh" },
+        { title: "Formations à distance (OpenClassrooms)", url: "https://openclassrooms.com/fr/" },
+        { title: "Bilan de compétences (CPF)", url: "https://moncompteformation.gouv.fr/" },
+      ]);
     }
-  };
+  }
 
-  // === Écrans ===
+  // =========== 0. PAGE D'ACCUEIL ===========
+  if (step === 0) return (
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.homeContainer}>
+        <Ionicons name="rocket-outline" size={40} color={ACCENT} style={{ alignSelf: 'center', marginBottom: 10, marginTop: 10 }} />
+        <Text style={styles.brandHome}>CV Intelligent</Text>
+        <Text style={styles.sloganHome}>
+          Un <Text style={{ color: ACCENT, fontWeight: 'bold' }}>CV parfait</Text> généré par l’IA.<Text style={{ color: ACCENT }}> Obtiens des offres ciblées en 3 étapes.</Text>
+        </Text>
+        <View style={styles.stepsContainer}>
+          <View style={styles.stepDotActive}><Text style={styles.stepDotText}>1</Text></View>
+          <View style={styles.stepLine} />
+          <View style={styles.stepDot}><Text style={styles.stepDotText}>2</Text></View>
+          <View style={styles.stepLine} />
+          <View style={styles.stepDot}><Text style={styles.stepDotText}>3</Text></View>
+        </View>
+        <View style={styles.stepLabelsRow}>
+          <Text style={styles.stepLabel}>Infos</Text>
+          <Text style={styles.stepLabel}>Expériences</Text>
+          <Text style={styles.stepLabel}>Compétences</Text>
+        </View>
+        <Text style={styles.homeDesc}>
+          <Text style={{ fontWeight: '700' }}>Remplis les 3 étapes guidées</Text> pour créer un CV optimisé, personnalisé, prêt à être téléchargé. <Text style={{ color: ACCENT, fontWeight: '600' }}>Découvre en 1 clic toutes les offres qui te correspondent.</Text>
+        </Text>
+        <View style={{ marginTop: 34, width: '100%', alignItems: 'center' }}>
+          <TouchableOpacity style={styles.bigBtn} onPress={() => setStep(1)}>
+            <Ionicons name="bulb-outline" size={24} color="#111" style={{ marginRight: 8 }} />
+            <Text style={styles.bigBtnText}>Commencer</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.bigBtnSec} onPress={() => setStep(4)}>
+            <Ionicons name="cloud-upload-outline" size={24} color={ACCENT} style={{ marginRight: 8 }} />
+            <Text style={styles.bigBtnTextSec}>Importer un CV</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
 
-  // Écran d'accueil
-  if (screen === 'home') return (
-    <View style={styles.container}>
-      <View style={styles.mainContent}>
-        <Text style={styles.logo}>Trouve ton Job en 1 min !</Text>
-        <TouchableOpacity style={styles.button} onPress={() => setScreen('form')}>
-          <Text style={styles.buttonText}>Créer un CV intelligent</Text>
+  // ...imports et autres parties de ton code...
+
+// =========== 1. INFOS ===========
+if (step === 1) return (
+  <SafeAreaView style={styles.safe}>
+    <ScrollView contentContainerStyle={styles.centeredForm}>
+      <View style={styles.cvCard}>
+        <Text style={styles.stepTitle}>
+          <Ionicons name="person-outline" size={28} color={ACCENT} />  Informations personnelles
+        </Text>
+        <UniformInput label="Prénom" value={prenom} onChange={setPrenom} placeholder="Clémence" icon="person-outline" autoFocus />
+        <UniformInput label="Nom" value={nom} onChange={setNom} placeholder="Bouchot" icon="person-outline" />
+        <UniformInput label="Email" value={mail} onChange={setMail} placeholder="clemence@email.com" keyboardType="email-address" icon="mail-outline" />
+        <UniformInput label="Téléphone" value={tel} onChange={setTel} placeholder="06..." keyboardType="phone-pad" icon="call-outline" />
+        <UniformInput label="Ville" value={ville} onChange={setVille} placeholder="Annecy" icon="location-outline" />
+        <UniformInput label="Adresse complète (optionnel)" value={adresse} onChange={setAdresse} placeholder="5 rue des fleurs, Annecy" icon="home-outline" />
+      </View>
+      <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(2)}>
+        <Text style={styles.nextBtnText}>Suivant</Text>
+        <Ionicons name="arrow-forward-outline" size={24} color="#fff" style={{ marginLeft: 5 }} />
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.linkBtn} onPress={() => setStep(0)}>
+        <Text style={styles.link}>← Accueil</Text>
+      </TouchableOpacity>
+    </ScrollView>
+  </SafeAreaView>
+);
+
+// =========== 2. EXPÉRIENCES ===========
+if (step === 2) return (
+  <SafeAreaView style={styles.safe}>
+    <ScrollView contentContainerStyle={styles.centeredForm}>
+      <View style={styles.cvCard}>
+        <Text style={styles.stepTitle}>
+          <Ionicons name="briefcase-outline" size={25} color={ACCENT} />  Expériences
+        </Text>
+        {experiences.map((exp, idx) => (
+          <View key={idx} style={styles.expCardModern}>
+            <UniformInput
+              label="Poste occupé"
+              value={exp.poste}
+              onChange={txt => {
+                const arr = [...experiences];
+                arr[idx].poste = txt;
+                setExperiences(arr);
+              }}
+              icon="build-outline"
+              placeholder="Poste"
+            />
+            <UniformInput
+              label="Entreprise"
+              value={exp.entreprise}
+              onChange={txt => {
+                const arr = [...experiences];
+                arr[idx].entreprise = txt;
+                setExperiences(arr);
+              }}
+              icon="business-outline"
+              placeholder="Entreprise"
+            />
+            <UniformInput
+              label="Début"
+              value={exp.debut}
+              onChange={txt => {
+                const arr = [...experiences];
+                arr[idx].debut = txt;
+                setExperiences(arr);
+              }}
+              icon="calendar-outline"
+              placeholder="06/2023"
+            />
+            <UniformInput
+              label="Fin"
+              value={exp.fin}
+              onChange={txt => {
+                const arr = [...experiences];
+                arr[idx].fin = txt;
+                setExperiences(arr);
+              }}
+              icon="calendar-outline"
+              placeholder='Fin (ou "actuel")'
+            />
+            <TouchableOpacity
+              onPress={() => setExperiences(experiences.filter((_, j) => j !== idx))}
+              style={styles.removeExpBtn}
+            >
+              <Ionicons name="close-circle" size={22} color="#ff6464" />
+            </TouchableOpacity>
+          </View>
+        ))}
+        <TouchableOpacity
+          onPress={() => setExperiences([...experiences, { poste: '', entreprise: '', debut: '', fin: '' }])}
+          style={styles.addExpBtn}
+        >
+          <Ionicons name="add-circle-outline" size={22} color={ACCENT} />
+          <Text style={styles.addText}>Ajouter une expérience</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.button} onPress={() => setScreen('library')}>
-          <Text style={styles.buttonText}>Importer mon CV</Text>
+      </View>
+      <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(3)}>
+        <Text style={styles.nextBtnText}>Suivant</Text>
+        <Ionicons name="arrow-forward-outline" size={24} color="#fff" style={{ marginLeft: 5 }} />
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.linkBtn} onPress={() => setStep(1)}>
+        <Text style={styles.link}>← Retour</Text>
+      </TouchableOpacity>
+    </ScrollView>
+  </SafeAreaView>
+);
+
+// =========== 3. COMPÉTENCES ===========
+if (step === 3) return (
+  <SafeAreaView style={styles.safe}>
+    <ScrollView contentContainerStyle={styles.centeredForm}>
+      <View style={styles.cvCard}>
+        <Text style={styles.stepTitle}>
+          <Ionicons name="sparkles-outline" size={24} color={ACCENT} />  Compétences & Soft Skills
+        </Text>
+        <ChipsModern
+          label="Compétences"
+          data={competences}
+          setData={setCompetences}
+          accent={ACCENT}
+          placeholder="Compétence"
+        />
+        <ChipsModern
+          label="Soft skills"
+          data={savoirEtre}
+          setData={setSavoirEtre}
+          accent={ACCENT}
+          placeholder="Ex: autonome, créatif…"
+        />
+      </View>
+      {/* Boutons de navigation */}
+      <TouchableOpacity style={styles.nextBtn} onPress={() => handleFindJobs(competenceMode)} disabled={loading}>
+        {loading ? <ActivityIndicator color="#111" /> : <>
+          <Text style={styles.nextBtnText}>Trouver des offres IA</Text>
+          <Ionicons name="search-outline" size={22} color="#fff" style={{ marginLeft: 5 }} />
+        </>}
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.linkBtn} onPress={() => setStep(2)}>
+        <Text style={styles.link}>← Retour</Text>
+      </TouchableOpacity>
+      {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
+    </ScrollView>
+  </SafeAreaView>
+);
+
+// ----------- UNIFORME INPUT -----------
+function UniformInput({ label, value, onChange, placeholder, keyboardType, icon, autoFocus }) {
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <Text style={{ color: '#287E6F', fontWeight: '600', marginBottom: 3 }}>{label}</Text>
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', backgroundColor: '#f7fcfa',
+        borderWidth: 1, borderColor: '#b7e9d9', borderRadius: 13, paddingHorizontal: 10
+      }}>
+        {icon && <Ionicons name={icon} size={19} color="#A0EAD3" style={{ marginRight: 6 }} />}
+        <TextInput
+          style={{ flex: 1, paddingVertical: 9, fontSize: 16, color: '#222' }}
+          value={value}
+          onChangeText={onChange}
+          placeholder={placeholder}
+          placeholderTextColor="#b0cfc6"
+          keyboardType={keyboardType || 'default'}
+          autoFocus={autoFocus}
+        />
+      </View>
+    </View>
+  );
+}
+
+// ----------- CHIPS MODERN -----------
+function ChipsModern({ label, data, setData, accent, placeholder }) {
+  const [value, setValue] = useState('');
+  return (
+    <View style={{ marginBottom: 15 }}>
+      <Text style={{ color: '#287E6F', fontWeight: '600', marginBottom: 5 }}>{label}</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 7 }}>
+        {data.map((item, i) => (
+          <View key={i} style={{
+            backgroundColor: accent + '22', borderRadius: 16, flexDirection: 'row', alignItems: 'center',
+            paddingHorizontal: 13, marginRight: 7, marginBottom: 5
+          }}>
+            <Text style={{ color: accent, fontWeight: '600', fontSize: 14 }}>{item}</Text>
+            <TouchableOpacity onPress={() => setData(data.filter((_, j) => j !== i))}>
+              <Ionicons name="close" size={16} color={accent} style={{ marginLeft: 3 }} />
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', backgroundColor: '#f7fcfa', borderRadius: 14,
+        borderWidth: 1, borderColor: '#b7e9d9', paddingHorizontal: 10
+      }}>
+        <TextInput
+          style={{ flex: 1, fontSize: 15, color: '#222', paddingVertical: 8 }}
+          placeholder={placeholder}
+          placeholderTextColor="#b0cfc6"
+          value={value}
+          onChangeText={setValue}
+          onSubmitEditing={() => {
+            if (value.trim().length > 0 && !data.includes(value.trim())) {
+              setData([...data, value.trim()]);
+              setValue('');
+            }
+          }}
+        />
+        <TouchableOpacity onPress={() => {
+          if (value.trim().length > 0 && !data.includes(value.trim())) {
+            setData([...data, value.trim()]);
+            setValue('');
+          }
+        }}>
+          <Ionicons name="add" size={18} color={accent} />
         </TouchableOpacity>
       </View>
     </View>
   );
+}
 
-  // FORMULAIRE "CV intelligent"
-  if (screen === 'form') return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS==='ios'?'padding':undefined}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.sectionTitle}>Remplis ton CV intelligent</Text>
-        {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
 
-        <Input label="Nom" value={nom} onChange={setNom} />
-        <Input label="Prénom" value={prenom} onChange={setPrenom} />
-        <Input label="Adresse" value={adresse} onChange={setAdresse} placeholder="Rue, ville" />
-        <Input label="Email" value={mail} onChange={setMail} keyboardType="email-address" />
-        <Input label="Téléphone" value={tel} onChange={setTel} keyboardType="phone-pad" />
-        <Input label="Poste visé" value={poste} onChange={setPoste} />
-        <Input label="Domaine" value={domaine} onChange={setDomaine} />
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Contrat :</Text>
-          {['CDI','CDD'].map(c => (
-            <TouchableOpacity
-              key={c}
-              style={[styles.contratBtn, typeContrat===c && styles.contratBtnSel]}
-              onPress={()=>setTypeContrat(c)}
-            >
-              <Text style={styles.contratText}>{c}</Text>
-            </TouchableOpacity>
-          ))}
+  // =========== 4. IMPORT CV ===========
+  if (step === 4) return (
+    <SafeAreaView style={styles.safe}>
+      <ScrollView contentContainerStyle={styles.centeredForm}>
+        <Text style={styles.stepTitle}><Ionicons name="document-outline" size={27} color={ACCENT} />  Importer un CV PDF</Text>
+        <View style={{ width: '96%', marginBottom: 16 }}>
+          <Input label="Ville" value={ville} onChange={setVille} placeholder="Annecy" />
+          <Input label="Intitulé du poste recherché" value={poste} onChange={setPoste} placeholder="Développeur, Designer..." />
+          <View style={styles.contractRow}>
+            {['CDI', 'CDD', 'INTERIM'].map(c => (
+              <TouchableOpacity
+                key={c}
+                style={[styles.contratBtn, typeContrat === c && styles.contratBtnSel]}
+                onPress={() => setTypeContrat(c)}
+                disabled={loading}
+              >
+                <Text style={styles.contratText}>{c}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
-
-        <Text style={styles.sectionSubTitle}>Compétences</Text>
-        {competences.map((c, i) => (
-          <View key={i} style={styles.inputRow}>
-            <TextInput
-              style={styles.inputFlex}
-              value={c}
-              onChangeText={t => updateCompetence(i, t)}
-              placeholder="Compétence"
-            />
-            <TouchableOpacity onPress={() => removeCompetence(i)}>
-              <Ionicons name="close-circle" size={24} color="#f00" />
-            </TouchableOpacity>
-          </View>
-        ))}
-        <TouchableOpacity onPress={addCompetence}>
-          <Text style={styles.addText}>+ Ajouter compétence</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.sectionSubTitle}>Savoirs-être</Text>
-        {savoirEtre.map((s, i) => (
-          <View key={i} style={styles.inputRow}>
-            <TextInput
-              style={styles.inputFlex}
-              value={s}
-              onChangeText={t => updateSavoirEtre(i, t)}
-              placeholder="Savoir-être"
-            />
-            <TouchableOpacity onPress={() => removeSavoirEtre(i)}>
-              <Ionicons name="close-circle" size={24} color="#f00" />
-            </TouchableOpacity>
-          </View>
-        ))}
-        <TouchableOpacity onPress={addSavoirEtre}>
-          <Text style={styles.addText}>+ Ajouter savoir-être</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.button} onPress={handleFindJobs} disabled={loading}>
-          {loading ? <ActivityIndicator color="#111" /> : <Text style={styles.buttonText}>Voir mes offres</Text>}
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.linkBtn} onPress={() => setScreen('home')}>
-          <Text style={styles.link}>← Retour</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
-  );
-
-  // IMPORT DE CV ("bibliothèque")
-  if (screen === 'library') return (
-    <View style={styles.container}>
-      <Text style={styles.sectionTitle}>Ma bibliothèque de documents</Text>
-      <ScrollView contentContainerStyle={styles.content}>
-        <TouchableOpacity style={styles.importBtn} onPress={handleImportCv}>
-          <Ionicons name="document-attach" size={20} color={ACCENT} />
-          <Text style={styles.importText}>Importer un CV</Text>
+        <TouchableOpacity style={styles.importBtn} onPress={handleImportCv} disabled={loading}>
+          <Ionicons name="document-attach-outline" size={22} color={ACCENT} />
+          <Text style={styles.importText}>Choisir un fichier PDF</Text>
         </TouchableOpacity>
         {importedCv && (
           <View style={styles.file}>
             <Text style={styles.fileName}>{importedCv.name}</Text>
-          </View>
-        )}
-        <TouchableOpacity style={styles.importBtn} onPress={handleImportLetter}>
-          <Ionicons name="mail" size={20} color={ACCENT} />
-          <Text style={styles.importText}>Importer une lettre</Text>
-        </TouchableOpacity>
-        {importedLetter && (
-          <View style={styles.file}>
-            <Text style={styles.fileName}>{importedLetter.name}</Text>
-          </View>
-        )}
-        <Input label="Domaine" value={domaine} onChange={setDomaine} />
-        <View style={styles.row}>
-          <Text style={styles.label}>Contrat :</Text>
-          {['CDI','CDD'].map(c => (
-            <TouchableOpacity
-              key={c}
-              style={[styles.contratBtn, typeContrat===c && styles.contratBtnSel]}
-              onPress={()=>setTypeContrat(c)}
-            >
-              <Text style={styles.contratText}>{c}</Text>
+            <TouchableOpacity onPress={() => setImportedCv(null)} disabled={loading}>
+              <Ionicons name="close-outline" size={20} color="#ff6464" />
             </TouchableOpacity>
-          ))}
+          </View>
+        )}
+        <TouchableOpacity
+          style={styles.nextBtn}
+          onPress={handleImportAndFindJobs}
+          disabled={loading || !importedCv}
+        >
+          {loading ? <ActivityIndicator color="#111" /> : <>
+            <Text style={styles.nextBtnText}>Analyser & Trouver des offres</Text>
+            <Ionicons name="search-outline" size={22} color="#fff" style={{ marginLeft: 5 }} />
+          </>}
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.linkBtn} onPress={() => setStep(0)}>
+          <Text style={styles.link}>← Accueil</Text>
+        </TouchableOpacity>
+        {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
+      </ScrollView>
+    </SafeAreaView>
+  );
+
+  // =========== 5. RÉSULTATS ===========
+  if (step === 5) return (
+    <SafeAreaView style={styles.safe}>
+      <ScrollView contentContainerStyle={styles.centeredForm}>
+        <Text style={styles.sectionTitle}>✨ Offres IA pour toi</Text>
+        {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
+        {loading && <ActivityIndicator color={ACCENT} style={{ margin: 30 }} />}
+        <View>
+          {Array.isArray(offres) && offres.length > 0 ? offres.map((item, i) => (
+            <View key={i} style={styles.offerCard}>
+              <Text style={styles.offerTitle}>{item.title}</Text>
+              <Text style={styles.offerCompany}>{item.company} — {item.location}</Text>
+              <TouchableOpacity
+                style={styles.applyBtn}
+                onPress={() => {
+                  if (item.applyUrl) Linking.openURL(item.applyUrl);
+                  else Alert.alert('À venir', 'Candidature automatique bientôt dispo !');
+                }}
+              >
+                <Ionicons name="send-outline" size={20} color="#111" style={{ marginRight: 5 }} />
+                <Text style={styles.applyBtnText}>Postuler pour moi</Text>
+              </TouchableOpacity>
+            </View>
+          )) : !loading ? (
+            <Text style={{ color: '#555', marginTop: 16, textAlign: 'center' }}>Aucune offre trouvée ou service indisponible.</Text>
+          ) : null}
         </View>
-        <Input label="Poste recherché" value={poste} onChange={setPoste} />
-        <TouchableOpacity style={styles.button} onPress={handleFindJobs} disabled={loading}>
-          {loading ? <ActivityIndicator color="#111" /> : <Text style={styles.buttonText}>Voir mes offres</Text>}
+        {/* --- Feedback IA & propositions --- */}
+        {(feedbackIA || (propositions && propositions.length > 0)) && (
+          <View style={{ backgroundColor: '#E7FFF7', borderRadius: 15, padding: 16, marginVertical: 16, width: '97%' }}>
+            {feedbackIA ? (
+              <Text style={{ color: '#111', fontSize: 15, fontWeight: '700', marginBottom: 6 }}>{feedbackIA}</Text>
+            ) : null}
+            {propositions && propositions.length > 0 && (
+              <View>
+                <Text style={{ color: '#287E6F', fontWeight: '600', marginBottom: 6 }}>Suggestions pour avancer :</Text>
+                {propositions.map((p, idx) => (
+                  <TouchableOpacity key={idx} onPress={() => Linking.openURL(p.url)} style={{ marginBottom: 6 }}>
+                    <Text style={{ color: ACCENT, fontWeight: '600', fontSize: 15 }}>• {p.title}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+        {/* --- Aperçu CV IA / demande --- */}
+        <TouchableOpacity
+          style={[styles.nextBtn, { marginTop: 18, backgroundColor: '#fff', borderColor: ACCENT, borderWidth: 2 }]}
+          onPress={() => {
+            if (cvGenUrl && cvGenUrl.startsWith('http')) Linking.openURL(cvGenUrl);
+            else Alert.alert(
+              'Fonctionnalité à venir',
+              "Le téléchargement du CV intelligent sera bientôt disponible !\n\n💡 Pour un CV design moderne, dis-nous ce que tu veux (style, couleurs, pictos...)."
+            );
+          }}
+        >
+          <Ionicons name="download-outline" size={22} color={ACCENT} style={{ marginRight: 8 }} />
+          <Text style={[styles.nextBtnText, { color: ACCENT }]}>Aperçu / Générer mon CV IA</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ ...styles.nextBtn, marginTop: 12, backgroundColor: '#fff', borderWidth: 1, borderColor: '#d0ece7' }}
+          onPress={() => Alert.alert(
+            "Demande spéciale",
+            "Pour obtenir un CV ou une lettre de motivation moderne, contacte-nous avec tes préférences (style, couleurs, métier...).\n\nOu va sur Canva pour un template instantané !"
+          )}
+        >
+          <Ionicons name="create-outline" size={22} color="#444" style={{ marginRight: 8 }} />
+          <Text style={[styles.nextBtnText, { color: '#444' }]}>Demander un CV/LM moderne</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.linkBtn} onPress={() => setStep(0)}>
+          <Text style={styles.link}>← Recommencer</Text>
         </TouchableOpacity>
       </ScrollView>
-      <TouchableOpacity style={styles.linkBtn} onPress={() => setScreen('home')}>
-        <Text style={styles.link}>← Retour</Text>
-      </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 
-  // AFFICHAGE OFFRES
-  if (screen === 'offers') return (
-    <View style={styles.container}>
-      <Text style={styles.sectionTitle}>Offres pour toi</Text>
-      {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
-      <FlatList
-        data={offres}
-        keyExtractor={(_, i) => i.toString()}
-        renderItem={({ item }) => (
-          <View style={styles.offerCard}>
-            <Text style={styles.offerTitle}>{item.title}</Text>
-            <Text style={styles.offerCompany}>{item.company} — {item.location}</Text>
-            <TouchableOpacity style={styles.applyBtn} onPress={() => Alert.alert('À venir', 'Candidature automatique bientôt dispo !')}>
-              <Text style={styles.applyBtnText}>Postuler pour moi</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        contentContainerStyle={styles.content}
-      />
-      <TouchableOpacity style={styles.linkBtn} onPress={() => setScreen('home')}>
-        <Text style={styles.link}>← Nouvel écran d’accueil</Text>
-      </TouchableOpacity>
-    </View>
-  );
+  // =================== HANDLERS ===================
+  async function handleFindJobs(onlyCompetence = false) {
+    setLoading(true); setErrorMsg('');
+    let backendTimedOut = false;
+    const timeout = setTimeout(() => {
+      backendTimedOut = true;
+      setErrorMsg('Service indisponible, vérifie ta connexion.');
+      setLoading(false);
+    }, 12000);
+    try {
+      let payload = {};
+      if (onlyCompetence) {
+        payload = {
+          competences: competences.filter(Boolean),
+          ville
+        };
+      } else {
+        payload = {
+          nom, prenom, adresse, ville, mail, tel, poste, typeContrat,
+          competences: competences.filter(Boolean),
+          savoirEtre: savoirEtre.filter(Boolean),
+          experiences,
+        };
+      }
+      const resp = await fetch('https://test-backend-push.onrender.com/api/smart-jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      clearTimeout(timeout);
+      if (!resp.ok) throw new Error(`Erreur serveur (${resp.status})`);
+      const text = await resp.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error('Erreur JSON backend:\n' + text); }
+      if (data.error) throw new Error(data.error);
+      const list = (data.smartOffers && data.smartOffers.length > 0)
+        ? data.smartOffers
+        : (data.offresBrutes || data.offres || []);
+      setOffres(list);
+      if (data.cvPdfUrl) setCvGenUrl(data.cvPdfUrl);
+      // --- Feedback IA automatique
+      generateFeedbackIA(payload, list);
+      setStep(5);
+    } catch (e) {
+      clearTimeout(timeout);
+      if (backendTimedOut) return;
+      setErrorMsg(e.message.includes('Network request failed') || e.message.includes('502') ? "Service indisponible, vérifie ta connexion." : e.message);
+      setOffres([]);
+      // --- Feedback IA pour "aucune offre"
+      generateFeedbackIA({}, []);
+      setStep(5);
+    } finally { setLoading(false); }
+  }
 
-  return null;
+  async function handleImportCv() {
+    const res = await DocumentPicker.getDocumentAsync({ type: 'application/pdf' });
+    if (!res.canceled && res.assets?.[0]) setImportedCv(res.assets[0]);
+  }
+  async function handleImportAndFindJobs() {
+    setLoading(true); setErrorMsg('');
+    let backendTimedOut = false;
+    const timeout = setTimeout(() => {
+      backendTimedOut = true;
+      setErrorMsg('Service indisponible, vérifie ta connexion.');
+      setLoading(false);
+    }, 12000);
+
+    try {
+      const formData = new FormData();
+      formData.append('cvFile', {
+        uri: importedCv.uri,
+        name: importedCv.name || 'cv.pdf',
+        type: importedCv.mimeType || 'application/pdf',
+      });
+      if (ville) formData.append('ville', ville);
+      if (poste) formData.append('poste', poste);
+      if (typeContrat) formData.append('typeContrat', typeContrat);
+
+      const resp = await fetch('https://test-backend-push.onrender.com/api/smart-jobs', {
+        method: 'POST',
+        body: formData,
+      });
+      clearTimeout(timeout);
+
+      if (!resp.ok) throw new Error(`Erreur serveur (${resp.status})`);
+      const text = await resp.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error('Erreur JSON backend:\n' + text); }
+      if (data.error) throw new Error(data.error);
+      const list = (data.smartOffers && data.smartOffers.length > 0)
+        ? data.smartOffers
+        : (data.offresBrutes || data.offres || []);
+      setOffres(list);
+      if (data.cvPdfUrl) setCvGenUrl(data.cvPdfUrl);
+      // --- Feedback IA automatique
+      generateFeedbackIA({}, list);
+      setStep(5);
+    } catch (e) {
+      clearTimeout(timeout);
+      if (backendTimedOut) return;
+      setErrorMsg(e.message.includes('Network request failed') || e.message.includes('502') ? "Service indisponible, vérifie ta connexion." : e.message);
+      setOffres([]);
+      // --- Feedback IA pour "aucune offre"
+      generateFeedbackIA({}, []);
+      setStep(5);
+    } finally { setLoading(false); }
+  }
+
 }
 
+// =================== STYLE ===================
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff', paddingTop: Platform.OS === 'ios' ? 50 : 20 },
-  content: { padding: 20 },
-  mainContent: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  logo: { fontSize: 36, fontWeight: 'bold', marginBottom: 32, color: '#111', letterSpacing: 2 },
-  button: { backgroundColor: ACCENT, paddingVertical: 16, paddingHorizontal: 44, borderRadius: 32, marginBottom: 12 },
-  buttonText: { color: '#111', fontSize: 18, fontWeight: 'bold' },
-  sectionTitle: { fontSize: 20, fontWeight: '600', color: '#111', marginBottom: 12 },
-  sectionSubTitle: { fontSize: 16, fontWeight: '500', color: '#111', marginTop: 16, marginBottom: 8 },
-  inputGroup: { marginBottom: 12 },
-  label: { fontSize: 14, color: '#555', marginBottom: 4 },
-  input: { backgroundColor: '#F7FCFA', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10 },
-  inputFlex: { flex: 1, backgroundColor: '#F7FCFA', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 10, marginRight: 8 },
-  inputRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  contratBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: ACCENT, marginRight: 8 },
-  contratBtnSel: { backgroundColor: ACCENT },
-  contratText: { color: '#111', fontWeight: '600' },
-  addText: { color: ACCENT, fontWeight: '600', marginVertical: 8 },
-  error: { color: 'red', textAlign: 'center', marginBottom: 8 },
-  importBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F7FCFA', borderRadius: 8, padding: 12, marginBottom: 12 },
-  importText: { marginLeft: 8, color: ACCENT, fontWeight: '600' },
-  file: { backgroundColor: '#E7FFF7', padding: 10, borderRadius: 6, marginBottom: 12 },
-  fileName: { color: '#111' },
-  linkBtn: { alignSelf: 'center', marginVertical: 12 },
-  offerCard: { backgroundColor: '#e7fff9', padding: 16, borderRadius: 12, marginBottom: 12 },
-  offerTitle: { fontWeight: 'bold', fontSize: 16, marginBottom: 4, color: '#111' },
-  offerCompany: { fontSize: 14, color: '#555', marginBottom: 8 },
-  applyBtn: { backgroundColor: ACCENT, paddingVertical: 12, borderRadius: 24, alignItems: 'center' },
-  applyBtnText: { color: '#111', fontWeight: '600' },
+  cvCard: {
+    backgroundColor: '#fff', borderRadius: 20, padding: 22, width: SCREEN_WIDTH * 0.95,
+    shadowColor: '#1DFFC2', shadowOpacity: 0.10, shadowRadius: 8, elevation: 2, marginBottom: 20
+  },
+  expCardModern: {
+    backgroundColor: BG, borderRadius: 15, padding: 12, marginBottom: 9, borderWidth: 1, borderColor: '#b7e9d9', position: 'relative'
+  },
+  removeExpBtn: { position: 'absolute', right: -9, top: -9 },
+  addExpBtn: { flexDirection: 'row', alignItems: 'center', marginTop: 12, marginBottom: 4 },
+  addText: { color: ACCENT, fontWeight: '600', marginLeft: 5, fontSize: 16 },
+  safe: { flex: 1, backgroundColor: BG },
+  homeContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 22, backgroundColor: BG, paddingBottom: 12 },
+  brandHome: { fontSize: 32, fontWeight: '900', color: '#111', letterSpacing: 0.5, textAlign: 'center', marginBottom: 4 },
+  sloganHome: { fontSize: 16.5, color: '#287E6F', textAlign: 'center', marginBottom: 10, lineHeight: 22, marginTop: 2 },
+  homeDesc: { fontSize: 15.5, color: '#222', textAlign: 'center', marginTop: 8, marginBottom: 2, lineHeight: 23, paddingHorizontal: 2 },
+  stepsContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 18, marginBottom: 6 },
+  stepDot: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: ACCENT, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  stepDotActive: { width: 28, height: 28, borderRadius: 14, backgroundColor: ACCENT, alignItems: 'center', justifyContent: 'center' },
+  stepDotText: { color: '#222', fontWeight: '800', fontSize: 15 },
+  stepLine: { width: 34, height: 2, backgroundColor: ACCENT, marginHorizontal: 3 },
+  stepLabelsRow: { flexDirection: 'row', justifyContent: 'space-between', width: 200, alignSelf: 'center', marginBottom: 2, marginTop: 1 },
+  stepLabel: { fontSize: 12, color: '#287E6F', width: 62, textAlign: 'center', fontWeight: '600' },
+  bigBtn: { backgroundColor: ACCENT, flexDirection: 'row', alignItems: 'center', borderRadius: 32, paddingVertical: 14, paddingHorizontal: 34, marginBottom: 16, shadowColor: ACCENT, shadowOpacity: 0.10, shadowRadius: 4, elevation: 1 },
+  bigBtnText: { color: '#111', fontSize: 19, fontWeight: 'bold' },
+  bigBtnSec: { backgroundColor: '#fff', borderColor: ACCENT, borderWidth: 2, flexDirection: 'row', alignItems: 'center', borderRadius: 32, paddingVertical: 14, paddingHorizontal: 34, marginBottom: 2 },
+  bigBtnTextSec: { color: ACCENT, fontSize: 19, fontWeight: 'bold' },
+
+  centeredForm: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 28, paddingHorizontal: 10, width: '100%' },
+
+  sectionTitle: { fontSize: 23, fontWeight: '800', color: '#111', marginBottom: 14, marginTop: 8, textAlign: 'center' },
+  sectionSubTitle: { fontSize: 17, fontWeight: '500', color: '#1C6F57', marginBottom: 10 },
+  stepTitle: { fontSize: 24, fontWeight: '900', color: '#111', marginBottom: 22, marginTop: 6, textAlign: 'center', letterSpacing: 0.1, flexDirection: 'row', alignItems: 'center', alignSelf: 'center' },
+
+  inputGroup: { marginBottom: 14, width: SCREEN_WIDTH * 0.92 },
+  label: { fontSize: 15, color: '#555', marginBottom: 3 },
+  input: { backgroundColor: '#F7FCFA', borderWidth: 1, borderColor: '#b7e9d9', borderRadius: 12, padding: 13, fontSize: 16, width: '100%' },
+  inputFlex: { flex: 1, backgroundColor: '#F7FCFA', borderWidth: 1, borderColor: '#b7e9d9', borderRadius: 12, padding: 13, fontSize: 16, width: '95%', alignSelf: 'center' },
+
+  contractRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 12, marginBottom: 20 },
+  contratBtn: { paddingVertical: 8, paddingHorizontal: 20, borderRadius: 20, borderWidth: 1, borderColor: ACCENT, marginRight: 8, backgroundColor: '#fff', marginBottom: 0 },
+  contratBtnSel: { backgroundColor: ACCENT, borderColor: ACCENT },
+  contratText: { color: '#111', fontWeight: '700', fontSize: 16 },
+  addText: { color: ACCENT, fontWeight: '600', marginVertical: 8, fontSize: 16 },
+
+  nextBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: ACCENT, borderRadius: 24, paddingVertical: 13, paddingHorizontal: 22, alignSelf: 'center', marginTop: 16, marginBottom: 10 },
+  nextBtnText: { color: '#111', fontWeight: '700', fontSize: 18 },
+  linkBtn: { alignSelf: 'center', marginVertical: 8 },
+  link: { color: '#36a987', fontSize: 16, fontWeight: '500' },
+  error: { color: 'red', textAlign: 'center', marginBottom: 8, marginTop: 8, fontWeight: 'bold' },
+
+  importBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#e3fff1', borderRadius: 12, padding: 16, marginBottom: 16, alignSelf: 'center', marginTop: 10 },
+  importText: { marginLeft: 10, color: ACCENT, fontWeight: '600', fontSize: 16 },
+  file: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E7FFF7', padding: 10, borderRadius: 10, marginBottom: 14, marginTop: 4 },
+  fileName: { color: '#111', fontSize: 15, marginRight: 10 },
+
+  expCard: { backgroundColor: BG, borderRadius: 14, padding: 12, marginBottom: 8, position: 'relative', width: '100%' },
+  listContainer: { width: '100%', maxHeight: 220, marginBottom: 10 },
+
+  offerCard: { backgroundColor: '#f2fff6', padding: 18, borderRadius: 16, marginBottom: 14, shadowColor: '#1DFFC2', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 1, height: 2 }, width: SCREEN_WIDTH * 0.95, alignSelf: 'center', alignItems: 'center' },
+  offerTitle: { fontWeight: 'bold', fontSize: 17, marginBottom: 4, color: '#111', textAlign: 'center' },
+  offerCompany: { fontSize: 15, color: '#555', marginBottom: 8, textAlign: 'center' },
+  applyBtn: { flexDirection: 'row', backgroundColor: ACCENT, paddingVertical: 12, borderRadius: 30, alignItems: 'center', justifyContent: 'center', marginTop: 6, paddingHorizontal: 24 },
+  applyBtnText: { color: '#111', fontWeight: '700', fontSize: 16, marginLeft: 4 },
+  compSwitchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 16, marginTop: 4 },
 });
+
