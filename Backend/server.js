@@ -639,7 +639,14 @@ app.post('/api/smart-jobs', upload.single('cvFile'), async (req, res) => {
     }
 
     // Recherche d'offres
-    const token = await getPoleEmploiToken().catch(() => null);
+// Timeout PE après 2s pour ne pas tout bloquer
+async function getPoleEmploiTokenSafe(timeoutMs = 2000) {
+  return Promise.race([
+    getPoleEmploiToken(),
+    new Promise(resolve => setTimeout(() => resolve(null), timeoutMs))
+  ]);
+}
+const token = await getPoleEmploiTokenSafe();
     let offres = [];
     if (userProfile.poste || userProfile.competences?.length) {
       let keyword = userProfile.poste || (userProfile.competences?.[0] || '');
@@ -691,6 +698,8 @@ ${JSON.stringify(userProfile, null, 2)}
 
     // CV IA mock
     let cvPdfUrl = '';
+    cvPdfUrl = `https://cap-backend-new.onrender.com/${filename}`;
+
 
 if ((userProfile.nom && userProfile.prenom) || userProfile.texte) {
   // Génère le HTML à partir du template
@@ -775,4 +784,3 @@ cron.schedule('15 */6 * * *', async () => {
 // ==== Start server ====
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`✅ CAP API running on http://localhost:${PORT}`));
-
