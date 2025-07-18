@@ -111,7 +111,11 @@ export default function JobForm() {
   // ==================== 1. INFOS PERSONNELLES ====================
   if (step === 1) return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.centeredForm} keyboardShouldPersistTaps="handled">
+     <ScrollView
+  contentContainerStyle={styles.centeredForm}
+  keyboardShouldPersistTaps="always"
+>
+
         <View style={styles.cvCard}>
           <Text style={styles.stepTitle}>
             <Ionicons name="person-outline" size={28} color={ACCENT} />  Informations personnelles
@@ -137,7 +141,11 @@ export default function JobForm() {
   // ==================== 2. EXPÉRIENCES ====================
   if (step === 2) return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.centeredForm} keyboardShouldPersistTaps="handled">
+     <ScrollView
+  contentContainerStyle={styles.centeredForm}
+  keyboardShouldPersistTaps="always"
+>
+
         <View style={styles.cvCard}>
           <Text style={styles.stepTitle}>
             <Ionicons name="briefcase-outline" size={25} color={ACCENT} />  Expériences
