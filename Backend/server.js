@@ -645,22 +645,21 @@ app.post('/api/smart-jobs', upload.single('cvFile'), async (req, res) => {
         new Promise(resolve => setTimeout(() => resolve(null), timeoutMs))
       ]);
     }
-    const token = await getPoleEmploiTokenSafe();
-    let offres = [];
-    if (userProfile.poste || userProfile.competences?.length) {
-      let keyword = userProfile.poste || (userProfile.competences?.[0] || '');
-      let ville = userProfile.ville || '';
-      let pe = [], adz = [];
+    let pe = [], adz = [];
+    try {
       if (token) {
         console.log('===> Recherche Pole Emploi...');
         pe = await searchJobsPoleEmploi(token, keyword, ville);
         console.log('===> PE terminé', pe.length);
       }
-      console.log('===> Recherche Adzuna...');
-      adz = await searchJobsAdzuna(keyword, ville);
-      console.log('===> Adzuna terminé', adz.length);
-      offres = [...pe, ...adz].slice(0, 15);
+    } catch(e) {
+      console.error('Erreur Pôle Emploi', e);
     }
+    console.log('===> Recherche Adzuna...');
+    adz = await searchJobsAdzuna(keyword, ville);
+    console.log('===> Adzuna terminé', adz.length);
+    offres = [...pe, ...adz].slice(0, 15);
+    
 
     let feedbackIA = '';
     let propositions = [];
@@ -789,4 +788,3 @@ cron.schedule('15 */6 * * *', async () => {
 // ==== Start server ====
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`✅ CAP API running on http://localhost:${PORT}`));
-
