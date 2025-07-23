@@ -3,7 +3,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Location from 'expo-location';
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, Linking, Dimensions, Switch, Keyboard, Platform, KeyboardAvoidingView
+  ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, Linking, Dimensions, Switch, Platform, KeyboardAvoidingView
 } from 'react-native';
 
 const ACCENT = '#1DFFC2';
@@ -12,7 +12,7 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 
 export default function JobForm() {
   // --- STATES principaux (à adapter à ta base) ---
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0);
   const [prenom, setPrenom] = useState('');
   const [nom, setNom] = useState('');
   const [mail, setMail] = useState('');
@@ -35,6 +35,11 @@ export default function JobForm() {
 
   const scrollRef = useRef(null);
 
+  // Fonctions expériences
+  const updateExp = (idx, newData) => setExperiences(exps => exps.map((exp, i) => (i === idx ? { ...exp, ...newData } : exp)));
+  const addExperience = () => setExperiences(exps => [...exps, { poste: '', entreprise: '', debut: '', fin: '' }]);
+  const removeExp = idx => setExperiences(exps => exps.filter((_, i) => i !== idx));
+
   // ---- Géoloc automatique ville sur étape 1
   useEffect(() => {
     (async () => {
@@ -49,21 +54,104 @@ export default function JobForm() {
     })();
   }, []);
 
-  useEffect(() => { Keyboard.dismiss(); }, [step]);
+  // ======= Gestion Clavier =======
+  // Correction : PAS de useEffect Keyboard.dismiss() qui perturbait l’ouverture/fermeture du clavier.
 
-  // ============ ETAPE 1 : INFOS PERSO ===============
+  // ======= Fonctions IA / CV =======
+  async function handleFindJobs(isCompetenceMode = false) {
+    try {
+      setLoading(true);
+      setErrorMsg('');
+      // Place ton appel API ici :
+      // TODO: remplacer par ton vrai endpoint/API/logiciel IA
+      // Simu :
+      setTimeout(() => {
+        setOffres([
+          { title: "Développeur React Native", company: "CAP", location: "Annecy", applyUrl: "https://cap.ai" }
+        ]);
+        setCvGenUrl("https://cap.ai/mon-cv-exemple.pdf"); // Simule un PDF généré
+        setFeedbackIA("Voici une sélection IA adaptée à ton profil !");
+        setPropositions([{ title: "Bien préparer ton entretien", url: "https://cap.ai/astuces" }]);
+        setLoading(false);
+        setStep(5); // On va sur l’étape Résultats
+      }, 1000);
+    } catch (e) {
+      setErrorMsg("Service indisponible. Réessaie plus tard.");
+      setLoading(false);
+    }
+  }
+
+  async function handleImportCv() {
+    try {
+      setErrorMsg('');
+      let res = await DocumentPicker.getDocumentAsync({ type: "application/pdf" });
+      if (!res.canceled) setImportedCv(res.assets?.[0] || res);
+    } catch (e) {
+      setErrorMsg("Impossible d'importer le fichier.");
+    }
+  }
+
+  async function handleImportAndFindJobs() {
+    if (!importedCv) return;
+    setLoading(true);
+    setErrorMsg('');
+    // Ici, place ton appel API import & matching
+    setTimeout(() => {
+      setOffres([
+        { title: "Product Manager", company: "CAP", location: "Lyon", applyUrl: "https://cap.ai" }
+      ]);
+      setCvGenUrl("https://cap.ai/mon-cv-exemple.pdf");
+      setFeedbackIA("CV importé, offres générées via IA !");
+      setPropositions([{ title: "Consulte ce guide", url: "https://cap.ai/guide-cv" }]);
+      setLoading(false);
+      setStep(5);
+    }, 1000);
+  }
+
+  // ==================== 0. ACCUEIL ====================
+  if (step === 0) return (
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.homeContainer}>
+        <Ionicons name="rocket-outline" size={40} color={ACCENT} style={{ alignSelf: 'center', marginBottom: 10, marginTop: 10 }} />
+        <Text style={styles.brandHome}>CV Intelligent</Text>
+        <Text style={styles.sloganHome}>
+          Un <Text style={{ color: ACCENT, fontWeight: 'bold' }}>CV parfait</Text> généré par l’IA.
+          <Text style={{ color: ACCENT }}> Obtiens des offres ciblées en 3 étapes.</Text>
+        </Text>
+        <View style={styles.stepsContainer}>
+          <View style={styles.stepDotActive}><Text style={styles.stepDotText}>1</Text></View>
+          <View style={styles.stepLine} />
+          <View style={styles.stepDot}><Text style={styles.stepDotText}>2</Text></View>
+          <View style={styles.stepLine} />
+          <View style={styles.stepDot}><Text style={styles.stepDotText}>3</Text></View>
+        </View>
+        <View style={styles.stepLabelsRow}>
+          <Text style={styles.stepLabel}>Infos</Text>
+          <Text style={styles.stepLabel}>Expériences</Text>
+          <Text style={styles.stepLabel}>Compétences</Text>
+        </View>
+        <Text style={styles.homeDesc}>
+          <Text style={{ fontWeight: '700' }}>Remplis les 3 étapes guidées</Text> pour créer un CV optimisé, personnalisé, prêt à être téléchargé. <Text style={{ color: ACCENT, fontWeight: '600' }}>Découvre en 1 clic toutes les offres qui te correspondent.</Text>
+        </Text>
+        <View style={{ marginTop: 34, width: '100%', alignItems: 'center' }}>
+          <TouchableOpacity style={styles.bigBtn} onPress={() => setStep(1)}>
+            <Ionicons name="bulb-outline" size={24} color="#111" style={{ marginRight: 8 }} />
+            <Text style={styles.bigBtnText}>Commencer</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.bigBtnSec} onPress={() => setStep(4)}>
+            <Ionicons name="cloud-upload-outline" size={24} color={ACCENT} style={{ marginRight: 8 }} />
+            <Text style={styles.bigBtnTextSec}>Importer un CV</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+
+  // ============== INFOS (step 1) ==================
   if (step === 1) return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
-      >
-        <ScrollView
-          contentContainerStyle={styles.centeredForm}
-          keyboardShouldPersistTaps="handled"
-          ref={scrollRef}
-        >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}>
+        <ScrollView contentContainerStyle={styles.centeredForm} keyboardShouldPersistTaps="handled" ref={scrollRef}>
           <View style={styles.cvCard}>
             <Text style={styles.stepTitle}>
               <Ionicons name="person-outline" size={28} color={ACCENT} />  Informations personnelles
@@ -87,18 +175,58 @@ export default function JobForm() {
     </SafeAreaView>
   );
 
-  // ============ ETAPE 2 : EXPERIENCES ===============
+  // ============== EXPERIENCES (step 2) ==================
   if (step === 2) return (
     <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
-      >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}>
         <ScrollView contentContainerStyle={styles.centeredForm} keyboardShouldPersistTaps="handled" ref={scrollRef}>
-          {/* ... Garde ton contenu actuel ici ... */}
+          <View style={styles.cvCard}>
+            <Text style={styles.stepTitle}>
+              <Ionicons name="briefcase-outline" size={25} color={ACCENT} />  Expériences
+            </Text>
+            {experiences.map((exp, idx) => (
+              <View key={exp.id || idx} style={styles.expCardModern}>
+                <UniformInput
+                  label="Poste occupé"
+                  value={exp.poste}
+                  onChange={txt => updateExp(idx, { poste: txt })}
+                  icon="build-outline"
+                  placeholder="Poste"
+                />
+                <UniformInput
+                  label="Entreprise"
+                  value={exp.entreprise}
+                  onChange={txt => updateExp(idx, { entreprise: txt })}
+                  icon="business-outline"
+                  placeholder="Entreprise"
+                />
+                <UniformInput
+                  label="Début"
+                  value={exp.debut}
+                  onChange={txt => updateExp(idx, { debut: txt })}
+                  icon="calendar-outline"
+                  placeholder="06/2023"
+                />
+                <UniformInput
+                  label="Fin"
+                  value={exp.fin}
+                  onChange={txt => updateExp(idx, { fin: txt })}
+                  icon="calendar-outline"
+                  placeholder='Fin (ou "actuel")'
+                />
+                <TouchableOpacity onPress={() => removeExp(idx)} style={styles.removeExpBtn}>
+                  <Ionicons name="close-circle" size={22} color="#ff6464" />
+                </TouchableOpacity>
+              </View>
+            ))}
+            <TouchableOpacity onPress={addExperience} style={styles.addExpBtn}>
+              <Ionicons name="add-circle-outline" size={22} color={ACCENT} />
+              <Text style={styles.addText}>Ajouter une expérience</Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(3)}>
             <Text style={styles.nextBtnText}>Suivant</Text>
+            <Ionicons name="arrow-forward-outline" size={24} color="#fff" style={{ marginLeft: 5 }} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.linkBtn} onPress={() => setStep(1)}>
             <Text style={styles.link}>← Retour</Text>
@@ -181,6 +309,38 @@ export default function JobForm() {
             </TouchableOpacity>
           </View>
         )}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+          <TouchableOpacity
+            style={[styles.nextBtn, { flex: 1, marginRight: 4 }]}
+            onPress={() => {
+              if (cvGenUrl && cvGenUrl.startsWith('http')) {
+                Linking.openURL(cvGenUrl);
+              } else {
+                Alert.alert('CV non généré', "Clique sur 'Générer mon CV IA' pour générer un CV à partir du PDF.");
+              }
+            }}
+          >
+            <Ionicons name="eye-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
+            <Text style={styles.nextBtnText}>Aperçu CV</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.nextBtn, { flex: 1, marginLeft: 4 }]}
+            onPress={async () => {
+              // Générer le CV IA à partir du PDF
+              setLoading(true);
+              setErrorMsg('');
+              setTimeout(() => {
+                setCvGenUrl("https://cap.ai/mon-cv-exemple.pdf"); // Simule génération
+                setLoading(false);
+                Alert.alert('CV généré', "Ton CV IA a bien été généré !");
+              }, 1000);
+            }}
+            disabled={loading || !importedCv}
+          >
+            <Ionicons name="download-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
+            <Text style={styles.nextBtnText}>Générer mon CV IA</Text>
+          </TouchableOpacity>
+        </View>
         <TouchableOpacity
           style={styles.nextBtn}
           onPress={handleImportAndFindJobs}
@@ -270,6 +430,27 @@ export default function JobForm() {
     </SafeAreaView>
   );
 
+  // ======= Composant UniformInput (inchangé, tu dois l’avoir en bas du fichier ou importé) =======
+  function UniformInput({ label, value, onChange, placeholder, keyboardType, icon }) {
+    return (
+      <View style={{ marginBottom: 12 }}>
+        <Text style={{ color: '#287E6F', fontWeight: '600', marginBottom: 3 }}>{label}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e5e5e5', borderRadius: 10, backgroundColor: '#fff' }}>
+          {icon && <Ionicons name={icon} size={20} color="#999" style={{ marginLeft: 8, marginRight: 6 }} />}
+          <TextInput
+            style={{ flex: 1, padding: 10, fontSize: 16, color: '#222' }}
+            value={value}
+            onChangeText={onChange}
+            placeholder={placeholder}
+            keyboardType={keyboardType}
+            placeholderTextColor="#b2b2b2"
+            autoCapitalize="none"
+          />
+        </View>
+      </View>
+    );
+  }
+  
   // ==== HANDLERS ====
   async function handleFindJobs(onlyCompetence = false) {
     Keyboard.dismiss();
