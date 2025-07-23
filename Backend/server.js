@@ -607,11 +607,7 @@ Réponds seulement par une liste d’actions ou de suggestions, sans texte super
 
 // ==== Smart jobs (CV intelligent ou import) ====
 app.post('/api/smart-jobs', upload.single('cvFile'), async (req, res) => {
-  // TA ROUTE CV/EMPLOI ICI (identique à avant, non modifié ici pour la lisibilité)
-});
-// ==== Smart jobs (CV intelligent ou import) ====
-app.post('/api/smart-jobs', upload.single('cvFile'), async (req, res) => {
-  console.log('===> /api/smart-jobs: requête reçue');
+  console.log('===> /api/smart-jobs: requête reçue', { body: req.body, file: req.file });
   try {
     let userProfile = {};
     if (req.file) {
