@@ -73,12 +73,12 @@ export default function JobForm() {
         };
       }
       // Envoi au backend (JSON)
-      const resp = await fetch('https://cap-backend-new.onrender.com/api/smart-jobs', 
- {
+      const resp = await fetch('https://cap-backend-new.onrender.com/api/smart-jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      
       if (!resp.ok) throw new Error(`Erreur serveur (${resp.status})`);
       const data = await resp.json();
       setOffres(data.smartOffers || data.offres || []);
