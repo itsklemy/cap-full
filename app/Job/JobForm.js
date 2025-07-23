@@ -295,21 +295,26 @@ export default function JobForm() {
           experiences,
         };
       }
-      const resp = await fetch('https://cap-backend-new.onrender.com/api/smart-jobs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+     // Dans handleFindJobs (juste après await fetch)
+console.log("Payload envoyé :", payload);
+const resp = await fetch('https://cap-backend-new.onrender.com/api/smart-jobs', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(payload)
+});
+console.log("Status:", resp.status);
+console.log("Réponse reçue:", (await resp.json()));
+
       clearTimeout(timeout);
       if (!resp.ok) throw new Error(`Erreur serveur (${resp.status})`);
       const data = await resp.json();
-      if (data.error) throw new Error(data.error);
-      setOffres((data.smartOffers && data.smartOffers.length > 0)
-        ? data.smartOffers
-        : (data.offresBrutes || data.offres || []));
-      setCvGenUrl(data.cvPdfUrl || ''); // Correction ici
-      setFeedbackIA(data.feedbackIA || '');
-      setPropositions(data.propositions || []);
+      if ((await resp.json()).error) throw new Error((await resp.json()).error);
+      setOffres(((await resp.json()).smartOffers && (await resp.json()).smartOffers.length > 0)
+        ? (await resp.json()).smartOffers
+        : ((await resp.json()).offresBrutes || (await resp.json()).offres || []));
+      setCvGenUrl((await resp.json()).cvPdfUrl || ''); // Correction ici
+      setFeedbackIA((await resp.json()).feedbackIA || '');
+      setPropositions((await resp.json()).propositions || []);
       setStep(5);
     } catch (e) {
       clearTimeout(timeout);
@@ -354,14 +359,18 @@ export default function JobForm() {
       if (poste) formData.append('poste', poste);
       if (typeContrat) formData.append('typeContrat', typeContrat);
 
-      const resp = await fetch('https://cap-backend-new.onrender.com/api/smart-jobs', {
-        method: 'POST',
-        body: formData,
-      });
+      console.log("FormData envoyé :", formData);
+const resp = await fetch('https://cap-backend-new.onrender.com/api/smart-jobs', {
+  method: 'POST',
+  body: formData,
+});
+console.log("Status:", resp.status);
+const data = await resp.json();
+console.log("Réponse reçue:", data);
+
       clearTimeout(timeout);
 
       if (!resp.ok) throw new Error(`Erreur serveur (${resp.status})`);
-      const data = await resp.json();
       if (data.error) throw new Error(data.error);
       setOffres((data.smartOffers && data.smartOffers.length > 0)
         ? data.smartOffers
