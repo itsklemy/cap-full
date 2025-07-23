@@ -611,9 +611,11 @@ app.post('/api/smart-jobs', upload.single('cvFile'), async (req, res) => {
 });
 // ==== Smart jobs (CV intelligent ou import) ====
 app.post('/api/smart-jobs', upload.single('cvFile'), async (req, res) => {
+  console.log('===> /api/smart-jobs: requête reçue');
   try {
     let userProfile = {};
     if (req.file) {
+      console.log('===> CV PDF importé');
       let textContent = '';
       try {
         const parsed = await pdfParse(req.file.buffer);
@@ -626,6 +628,7 @@ app.post('/api/smart-jobs', upload.single('cvFile'), async (req, res) => {
       }
       userProfile = { texte: textContent, ville: req.body.ville || '' };
     } else {
+      console.log('===> Formulaire rempli, pas de PDF');
       userProfile = {
         nom: req.body.nom, prenom: req.body.prenom, adresse: req.body.adresse, ville: req.body.ville,
         mail: req.body.mail, tel: req.body.tel, poste: req.body.poste, typeContrat: req.body.typeContrat,
@@ -639,29 +642,34 @@ app.post('/api/smart-jobs', upload.single('cvFile'), async (req, res) => {
     }
 
     // Recherche d'offres
-// Timeout PE après 2s pour ne pas tout bloquer
-async function getPoleEmploiTokenSafe(timeoutMs = 2000) {
-  return Promise.race([
-    getPoleEmploiToken(),
-    new Promise(resolve => setTimeout(() => resolve(null), timeoutMs))
-  ]);
-}
-const token = await getPoleEmploiTokenSafe();
+    console.log('===> Recherche d\'offres');
+    async function getPoleEmploiTokenSafe(timeoutMs = 2000) {
+      return Promise.race([
+        getPoleEmploiToken(),
+        new Promise(resolve => setTimeout(() => resolve(null), timeoutMs))
+      ]);
+    }
+    const token = await getPoleEmploiTokenSafe();
     let offres = [];
     if (userProfile.poste || userProfile.competences?.length) {
       let keyword = userProfile.poste || (userProfile.competences?.[0] || '');
       let ville = userProfile.ville || '';
       let pe = [], adz = [];
-      if (token) pe = await searchJobsPoleEmploi(token, keyword, ville);
+      if (token) {
+        console.log('===> Recherche Pole Emploi...');
+        pe = await searchJobsPoleEmploi(token, keyword, ville);
+        console.log('===> PE terminé', pe.length);
+      }
+      console.log('===> Recherche Adzuna...');
       adz = await searchJobsAdzuna(keyword, ville);
+      console.log('===> Adzuna terminé', adz.length);
       offres = [...pe, ...adz].slice(0, 15);
     }
 
     let feedbackIA = '';
     let propositions = [];
-    // SI AUCUNE OFFRE, générer un prompt de réorientation personnalisé
     if (offres.length === 0) {
-      // --- NOUVEAU PROMPT IA ---
+      console.log('===> Aucune offre, prompt IA de réorientation');
       const prompt = `
 Voici le profil d'une personne en recherche d'emploi, pour laquelle aucune offre immédiate n'a été trouvée avec ses critères.
 Détaille :
@@ -694,34 +702,34 @@ ${JSON.stringify(userProfile, null, 2)}
     } else {
       feedbackIA = `Bravo ! Ton profil ressort principalement pour le métier de "${userProfile.poste || offres[0]?.title}".`;
       propositions = [];
+      console.log('===> Offres trouvées');
     }
 
-    // CV IA mock
+    // Génération PDF si nécessaire
     let cvPdfUrl = '';
-    cvPdfUrl = `https://cap-backend-new.onrender.com/${filename}`;
+    if ((userProfile.nom && userProfile.prenom) || userProfile.texte) {
+      console.log('===> Génération PDF');
+      const cvHtml = getCvHtml_Template1(userProfile, { mainColor: "#1DFFC2" });
+      const browser = await puppeteer.launch({ headless: 'new' });
+      const page = await browser.newPage();
+      await page.setContent(cvHtml, { waitUntil: 'networkidle0' });
+      const filename = `cv-${Date.now()}-${Math.floor(Math.random()*100000)}.pdf`;
+      const pdfPath = path.join(__dirname, 'public', filename);
+      await page.pdf({ path: pdfPath, format: 'A4', printBackground: true });
+      await browser.close();
+      cvPdfUrl = `https://cap-backend-new.onrender.com/${filename}`;
+    }
 
-
-if ((userProfile.nom && userProfile.prenom) || userProfile.texte) {
-  // Génère le HTML à partir du template
-  const cvHtml = getCvHtml_Template1(userProfile, { mainColor: "#1DFFC2" });
-
-  // Lance puppeteer pour créer le PDF
-  const browser = await puppeteer.launch({ headless: 'new' }); // 'new' recommandé
-  const page = await browser.newPage();
-  await page.setContent(cvHtml, { waitUntil: 'networkidle0' });
-  // Chemin de sortie (assure-toi que le dossier 'public' existe !)
-  const filename = `cv-${Date.now()}-${Math.floor(Math.random()*100000)}.pdf`;
-  const pdfPath = path.join(__dirname, 'public', filename);
-  await page.pdf({ path: pdfPath, format: 'A4', printBackground: true });
-  await browser.close();
-}
+    console.log('===> Réponse envoyée');
     res.json({
       smartOffers: offres,
       feedbackIA,
       propositions,
       cvPdfUrl
     });
+
   } catch (e) {
+    console.error('Erreur smart-jobs', e);
     res.status(500).json({
       error: e.message || 'Erreur interne backend',
       smartOffers: [],
@@ -734,6 +742,7 @@ if ((userProfile.nom && userProfile.prenom) || userProfile.texte) {
     });
   }
 });
+
 // ==== Cached offers endpoint (simple, optionnel) ====
 app.get('/api/offres-cached', async (req, res) => {
   const { motCle = '', ville = '' } = req.query;
@@ -784,3 +793,4 @@ cron.schedule('15 */6 * * *', async () => {
 // ==== Start server ====
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`✅ CAP API running on http://localhost:${PORT}`));
+
