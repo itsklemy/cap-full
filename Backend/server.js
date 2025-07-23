@@ -637,29 +637,30 @@ app.post('/api/smart-jobs', upload.single('cvFile'), async (req, res) => {
       if (typeof userProfile.experiences === 'string') userProfile.experiences = JSON.parse(userProfile.experiences);
     }
 
-    // Recherche d'offres
-    console.log('===> Recherche d\'offres');
-    async function getPoleEmploiTokenSafe(timeoutMs = 2000) {
-      return Promise.race([
-        getPoleEmploiToken(),
-        new Promise(resolve => setTimeout(() => resolve(null), timeoutMs))
-      ]);
-    }
-    let pe = [], adz = [];
-    try {
-      if (token) {
-        console.log('===> Recherche Pole Emploi...');
-        pe = await searchJobsPoleEmploi(token, keyword, ville);
-        console.log('===> PE terminé', pe.length);
-      }
-    } catch(e) {
-      console.error('Erreur Pôle Emploi', e);
-    }
-    console.log('===> Recherche Adzuna...');
-    adz = await searchJobsAdzuna(keyword, ville);
-    console.log('===> Adzuna terminé', adz.length);
-    offres = [...pe, ...adz].slice(0, 15);
-    
+    // --- Recherche d'offres ---
+let keyword = userProfile.poste || (userProfile.competences?.[0] || '');
+let ville = userProfile.ville || '';
+let token = null;
+try {
+  token = await getPoleEmploiTokenSafe();
+} catch(e) {
+  console.error('Erreur obtention token Pole Emploi', e);
+}
+let pe = [], adz = [];
+try {
+  if (token) {
+    console.log('===> Recherche Pole Emploi...');
+    pe = await searchJobsPoleEmploi(token, keyword, ville);
+    console.log('===> PE terminé', pe.length);
+  }
+} catch(e) {
+  console.error('Erreur Pôle Emploi', e);
+}
+console.log('===> Recherche Adzuna...');
+adz = await searchJobsAdzuna(keyword, ville);
+console.log('===> Adzuna terminé', adz.length);
+offres = [...pe, ...adz].slice(0, 15);
+
 
     let feedbackIA = '';
     let propositions = [];
